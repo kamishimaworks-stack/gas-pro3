@@ -1,0 +1,6 @@
+# clasp (scriptId は環境ごとに異なる場合がある)
+# .clasp.json
+
+# ログ・一時ファイル
+*.log
+.DS_Store
