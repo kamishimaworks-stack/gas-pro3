@@ -834,18 +834,26 @@
                   <div class="md:col-span-1"></div>
                 </div>
                 
-                <!-- 選択モード切替ボタン -->
-                <div class="flex justify-between items-center mb-2 px-2">
-                  <button @click="toggleSelectionMode" 
-                          :class="isSelectionMode ? 'bg-blue-600 text-white' : 'bg-gray-300 text-gray-700'"
-                          class="px-4 py-2 rounded font-bold text-xs flex items-center gap-1 transition-colors hover:opacity-90">
-                    <span class="material-icons text-sm">{{ isSelectionMode ? 'check_box' : 'check_box_outline_blank' }}</span>
-                    {{ isSelectionMode ? '選択モード ON' : '選択モード OFF' }}
-                  </button>
-                  <div v-if="isSelectionMode && selectedItemsCount > 0" class="text-xs text-gray-600 flex items-center gap-2">
-                    <span>選択中: {{ selectedItemsCount }}件</span>
-                    <button @click="selectAllRows" class="px-2 py-1 bg-blue-100 rounded hover:bg-blue-200 font-bold">全選択</button>
-                    <button @click="clearAllSelection" class="px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 font-bold">全解除</button>
+                <!-- 改善5: 統一ツールバー（モード廃止・チェックボックス常設） -->
+                <div class="flex justify-between items-center mb-2 px-2 flex-wrap gap-1">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500">
+                      <span class="material-icons text-sm align-middle">check_box</span>
+                      選択: <b>{{ selectedItemsCount }}</b>件
+                    </span>
+                    <button @click="selectAllRows" class="px-2 py-1 bg-blue-100 rounded hover:bg-blue-200 font-bold text-xs">全選択</button>
+                    <button @click="clearAllSelection" class="px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 font-bold text-xs">全解除</button>
+                  </div>
+                  <div class="flex items-center gap-1">
+                    <button @click="selectByVendorPrompt" class="px-2 py-1 bg-orange-100 rounded hover:bg-orange-200 text-xs font-bold" title="同じ発注先の行を一括選択">
+                      <span class="material-icons text-xs align-middle">store</span> 業者別選択
+                    </button>
+                    <button @click="selectByCategoryPrompt" class="px-2 py-1 bg-teal-100 rounded hover:bg-teal-200 text-xs font-bold" title="同じ工種の行を一括選択">
+                      <span class="material-icons text-xs align-middle">category</span> 工種別選択
+                    </button>
+                    <button @click="selectUnorderedRows" class="px-2 py-1 bg-red-100 rounded hover:bg-red-200 text-xs font-bold" title="未発注行を一括選択">
+                      <span class="material-icons text-xs align-middle">warning</span> 未発注選択
+                    </button>
                   </div>
                 </div>
                 
@@ -854,7 +862,7 @@
                   <table class="grid-legacy w-full min-w-[1000px]">
                     <thead style="position: sticky; top: 0; z-index: 10;">
                       <tr>
-                        <th rowspan="2" style="width:30px;"></th><th rowspan="2" style="width:80px;">工種</th><th rowspan="2" style="width:140px;">品名</th><th rowspan="2" style="width:100px;">仕様</th><th rowspan="2" style="width:50px;">数量</th><th rowspan="2" style="width:40px;">単位</th>
+                        <th rowspan="2" style="width:28px;"><input type="checkbox" :checked="selectedItemsCount === form.items.length && form.items.length > 0" @change="$event.target.checked ? selectAllRows() : clearAllSelection()" title="全選択/解除"></th><th rowspan="2" style="width:30px;"></th><th rowspan="2" style="width:80px;">工種</th><th rowspan="2" style="width:140px;">品名</th><th rowspan="2" style="width:100px;">仕様</th><th rowspan="2" style="width:50px;">数量</th><th rowspan="2" style="width:40px;">単位</th>
                         <th colspan="2" class="bg-blue-100 text-blue-900 border-l border-r border-blue-300">【見積（売価）】</th>
                         <th colspan="4" class="bg-orange-100 text-orange-900 border-l border-r border-orange-300">【実行（原価）/ 発注】</th>
                         <th rowspan="2" class="w-16 bg-green-100 text-green-900">粗利%</th>
@@ -865,34 +873,35 @@
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="(item, idx) in form.items" :key="idx" :id="'item-row-' + idx" 
+                      <tr v-for="(item, idx) in form.items" :key="item._uid || idx" :id="'item-row-' + idx" 
                           class="transition-colors duration-150"
-                          @click="isSelectionMode ? handleRowSelection(idx, $event) : handleEstimateRowClick(item, idx)"
+                          @click="sidePanelMode === 'order' ? handleEstimateRowClick(item, idx) : null"
                           :class="{
-                            'cursor-pointer': isSelectionMode,
-                            'bg-blue-100': isSelectionMode && item.selected,
-                            'hover:bg-blue-50': isSelectionMode && !item.selected,
-                            'hover:bg-gray-50': !isSelectionMode,
-                            'cursor-pointer hover:bg-orange-100 border-l-4 border-orange-500': !isSelectionMode && sidePanelMode === 'order',
-                            'bg-blue-50': !isSelectionMode && activeLeftPanelRow === idx
+                            'bg-blue-100': item.selected,
+                            'hover:bg-gray-50': !item.selected,
+                            'cursor-pointer hover:bg-orange-100 border-l-4 border-orange-500': sidePanelMode === 'order' && !item.selected,
+                            'bg-blue-50': activeLeftPanelRow === idx && !item.selected
                           }">
-                        <td class="text-center bg-gray-100 cursor-pointer hover:bg-red-200" @click.stop="removeItem(idx)">{{ idx+1 }}</td>
-                        <td :style="isSelectionMode ? 'pointer-events: none;' : ''"><textarea v-model="item.category" class="input-cell" rows="1" v-auto-resize @click.stop :readonly="isSelectionMode"></textarea></td>
-                        <td class="relative" :style="isSelectionMode ? 'pointer-events: none;' : ''">
-                            <textarea v-model="item.product" @focus="openLeftPanel('price', idx)" class="input-cell font-bold" placeholder="品名" rows="1" v-auto-resize @click.stop :readonly="isSelectionMode"></textarea>
+                        <td class="text-center" @click.stop="handleRowSelection(idx, $event)" style="cursor:pointer; user-select:none;">
+                          <input type="checkbox" :checked="item.selected" @click.stop="handleRowSelection(idx, $event)" tabindex="-1" style="pointer-events:none;">
                         </td>
-                        <td :style="isSelectionMode ? 'pointer-events: none;' : ''"><textarea v-model="item.spec" class="input-cell text-xs" placeholder="仕様" rows="1" v-auto-resize @click.stop :readonly="isSelectionMode"></textarea></td>
-                        <td :style="isSelectionMode ? 'pointer-events: none;' : ''"><input type="number" v-model.lazy="item.qty" class="input-cell num-cell bg-blue-50" @change="calcLine(item)" @click.stop :readonly="isSelectionMode"></input></td>
-                        <td :style="isSelectionMode ? 'pointer-events: none;' : ''"><input v-model="item.unit" class="input-cell text-center" @click.stop :readonly="isSelectionMode"></input></td>
-                        <td style="background:#E3F2FD" class="relative group" :style="isSelectionMode ? 'pointer-events: none;' : ''">
-                            <input type="number" v-model.lazy="item.price" class="input-cell num-cell" @change="calcLine(item)" @click.stop :readonly="isSelectionMode">
-                            <button v-if="!isSelectionMode && !item.price && item.product" @click.stop="predictPrice(item)" class="absolute top-0 left-0 bg-purple-600 text-white text-[10px] px-1 opacity-20 hover:opacity-100 transition-opacity" title="AI単価予測">AI</button>
+                        <td class="text-center bg-gray-100 cursor-pointer hover:bg-red-200" @click.stop="removeItem(idx)">{{ idx+1 }}</td>
+                        <td><textarea v-model="item.category" class="input-cell" rows="1" v-auto-resize @click.stop></textarea></td>
+                        <td class="relative">
+                            <textarea v-model="item.product" @focus="openLeftPanel('price', idx)" class="input-cell font-bold" placeholder="品名" rows="1" v-auto-resize @click.stop></textarea>
+                        </td>
+                        <td><textarea v-model="item.spec" class="input-cell text-xs" placeholder="仕様" rows="1" v-auto-resize @click.stop></textarea></td>
+                        <td><input type="number" v-model.lazy="item.qty" class="input-cell num-cell bg-blue-50" @change="calcLine(item)" @click.stop></input></td>
+                        <td><input v-model="item.unit" class="input-cell text-center" @click.stop></input></td>
+                        <td style="background:#E3F2FD" class="relative group">
+                            <input type="number" v-model.lazy="item.price" class="input-cell num-cell" @change="calcLine(item)" @click.stop>
+                            <button v-if="!item.price && item.product" @click.stop="predictPrice(item)" class="absolute top-0 left-0 bg-purple-600 text-white text-[10px] px-1 opacity-20 hover:opacity-100 transition-opacity" title="AI単価予測">AI</button>
                         </td>
                         <td class="num-cell font-mono bg-blue-100 font-bold text-blue-900">{{ formatCurrency(item.amount) }}</td>
                         
-                        <td class="bg-orange-50" :style="isSelectionMode ? 'pointer-events: none;' : ''"><input v-model="item.vendor" list="vl" class="input-cell text-xs" placeholder="業者選択..." @click.stop :readonly="isSelectionMode"></input></td>
-                        <td class="bg-orange-50" :style="isSelectionMode ? 'pointer-events: none;' : ''"><input type="number" v-model.lazy="item.cost" class="input-cell num-cell" @change="calcLine(item)" @click.stop :readonly="isSelectionMode"></input></td>
-                        <td class="bg-orange-50" :style="isSelectionMode ? 'pointer-events: none;' : ''"><input type="number" v-model.lazy="item.qty" class="input-cell num-cell" readonly title="見積数と同数" @click.stop></input></td>
+                        <td class="bg-orange-50"><input v-model="item.vendor" list="vl" class="input-cell text-xs" placeholder="業者選択..." @click.stop></input></td>
+                        <td class="bg-orange-50"><input type="number" v-model.lazy="item.cost" class="input-cell num-cell" @change="calcLine(item)" @click.stop></input></td>
+                        <td class="bg-orange-50"><input type="number" v-model.lazy="item.qty" class="input-cell num-cell" readonly title="見積数と同数" @click.stop></input></td>
                         <td class="num-cell font-mono bg-orange-100 text-orange-900 font-bold">{{ formatCurrency(Math.round((item.qty||0)*(item.cost||0))) }}</td>
                         
                         <td class="text-right num-cell font-bold" :class="Number(calculateMargin(item)) < 15 ? 'text-red-500' : 'text-green-700'">
@@ -972,8 +981,8 @@
 
                         <!-- タブ1: 新規作成 -->
                         <div v-if="orderPanelTab === 'create'" class="flex-1 overflow-y-auto flex flex-col">
-                            <div class="p-2 text-xs bg-blue-50 text-blue-800 border-b border-blue-200 mb-2">
-                                <span class="material-icons text-sm align-middle">info</span> 明細の単価変更は、左の見積にも反映されます
+                            <div class="p-2 text-xs bg-green-50 text-green-800 border-b border-green-200 mb-2">
+                                <span class="material-icons text-sm align-middle">info</span> 発注専用の単価を設定できます。見積原価は参照のみです。
                             </div>
                             
                             <!-- 選択行の一括操作（選択行がある場合のみ表示） -->
@@ -1007,7 +1016,7 @@
                             </div>
                             
                             <div v-if="orderInPanel.items.length === 0 && selectedItemsCount === 0" class="p-4 text-center text-gray-400 text-xs">
-                                明細がありません。<br>「選択モード」をONにして行を選択するか、見積行をクリックして発注パネルに追加してください。
+                                明細がありません。<br>チェックボックスで行を選択するか、<br>発注パネル表示中に行をクリックして追加してください。
                             </div>
                             
                             <div v-for="(item, i) in orderInPanel.items" :key="i" class="bg-white p-2 border-b border-gray-200 text-xs relative group hover:bg-orange-50">
@@ -1019,9 +1028,15 @@
                                         <input v-model.lazy="item.vendor" list="vl" class="border p-1 w-full text-xs" placeholder="業者を選択">
                                     </div>
                                     <div>
-                                        <label class="block text-[9px] text-gray-500">原価単価</label>
+                                        <label class="block text-[9px] text-gray-500">発注単価</label>
                                         <input v-model.lazy="item.cost" type="number" class="border p-1 w-full text-right" placeholder="単価">
                                     </div>
+                                </div>
+                                <div v-if="item.estimateCost" class="text-[9px] text-gray-400 mb-1 px-1">
+                                    見積原価参考: {{ formatCurrency(item.estimateCost) }}
+                                    <span v-if="Number(item.cost) !== Number(item.estimateCost)" class="text-orange-600 font-bold ml-1">
+                                        (差額: {{ formatCurrency(Number(item.cost) - Number(item.estimateCost)) }})
+                                    </span>
                                 </div>
                                 <div class="grid grid-cols-3 gap-2 items-end">
                                     <div>
@@ -1686,6 +1701,9 @@ window.__script2Ran = true;
         const { createApp, ref, reactive, onMounted, computed, nextTick, watch } = Vue;
         
         const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+        // 改善3-3: 一意ID生成ヘルパー
+        let _uidCounter = 0;
+        const genUid = () => 'uid_' + Date.now().toString(36) + '_' + (++_uidCounter);
         // Auto-resize directive
         const vAutoResize = {
             mounted: (el) => {
@@ -1936,6 +1954,9 @@ window.__script2Ran = true;
             // 業者選択モーダル用
             const showVendorSelectModal = ref(false);
             const vendorCandidates = ref([]);
+            
+            // 改善7: 業者別プレビュー用
+            const vendorSplitPreview = ref(null); // { vendors: { name, items, total }, totalAmount, action: 'save'|'pdf' }
             
             // --- AIチャットボット用データ ---
             const showChatBot = ref(false);
@@ -2193,8 +2214,7 @@ window.__script2Ran = true;
                         row.price = master.price;
                         calcLine(row);
                         notify("反映しました");
-                        form.items.splice(activeLeftPanelRow.value + 1, 0, { category: "", product: "", spec: "", qty: 1, unit: "", price: 0, cost: 0, amount: 0, orderedQty: 0, orderedAmount: 0, selected: false });
-                        orderInPanel.items.forEach(o => { if (o.sourceRowIndex !== null && o.sourceRowIndex > activeLeftPanelRow.value) o.sourceRowIndex++; });
+                        form.items.splice(activeLeftPanelRow.value + 1, 0, { _uid: genUid(), category: "", product: "", spec: "", qty: 1, unit: "", price: 0, cost: 0, amount: 0, orderedQty: 0, orderedAmount: 0, selected: false });
                         activeLeftPanelRow.value = activeLeftPanelRow.value + 1;
                         // #region agent log
                         fetch('http://127.0.0.1:7242/ingest/cf251808-2a3e-4f12-be84-e0c33a422a0c',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'index.html:1742',message:'applyMasterItem success',data:{newActiveRow:activeLeftPanelRow.value},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
@@ -2261,6 +2281,21 @@ window.__script2Ran = true;
             
             // Phase 4: 専用発注画面の変更検知
             watch(() => dedicatedOrderForm.items, () => { isDirty.value = true; }, { deep: true });
+            
+            // 改善3-1+: 発注パネルの変更をlocalStorageに自動退避
+            watch(() => orderInPanel.items, (items) => {
+                try {
+                    if (items.length > 0) {
+                        localStorage.setItem('orderPanelDraft', JSON.stringify({
+                            estimateId: form.header.id,
+                            items: items,
+                            savedAt: Date.now()
+                        }));
+                    } else {
+                        localStorage.removeItem('orderPanelDraft');
+                    }
+                } catch(e) { /* ignore */ }
+            }, { deep: true });
             
             window.addEventListener('beforeunload', (e) => {
                 const isEmpty = () => {
@@ -2331,8 +2366,17 @@ window.__script2Ran = true;
             
             // ... (既存メソッド省略なし) ...
             const closeSidePanel = async () => {
+              // 改善3-1: パネル閉じ時の確認ダイアログ
+              if (sidePanelMode.value === 'order' && orderInPanel.items.length > 0) {
+                const ok = await confirmAction(
+                  '発注パネルに未保存のデータがあります。\n閉じると入力中のデータが失われます。\nよろしいですか？'
+                );
+                if (!ok) return;
+              }
               if (sidePanelMode.value === 'order') {
                 orderInPanel.items = [];
+                // 改善3-1+: localStorage一時保存をクリア
+                try { localStorage.removeItem('orderPanelDraft'); } catch(e) {}
               }
               closeOrderEdit();
               sidePanelMode.value = null;
@@ -2341,9 +2385,38 @@ window.__script2Ran = true;
               if (sidePanelMode.value === mode) {
                 await closeSidePanel();
               } else {
+                // 現在のパネルが発注で未保存データがある場合は確認
+                if (sidePanelMode.value === 'order' && orderInPanel.items.length > 0 && mode !== 'order') {
+                  const ok = await confirmAction(
+                    '発注パネルに未保存のデータがあります。\nタブを切り替えるとデータが失われます。\nよろしいですか？'
+                  );
+                  if (!ok) return;
+                  orderInPanel.items = [];
+                  try { localStorage.removeItem('orderPanelDraft'); } catch(e) {}
+                }
                 sidePanelMode.value = mode;
                 if (mode === 'history') {
                     await loadEstimateHistory();
+                }
+                // 改善3-1+: 発注パネルを開いたときにlocalStorageから復元確認
+                if (mode === 'order') {
+                  try {
+                    const draft = localStorage.getItem('orderPanelDraft');
+                    if (draft && orderInPanel.items.length === 0) {
+                      const parsed = JSON.parse(draft);
+                      if (parsed.estimateId === form.header.id && parsed.items && parsed.items.length > 0) {
+                        const restore = await confirmAction(
+                          `前回の未保存データ (${parsed.items.length}件) があります。復元しますか？`
+                        );
+                        if (restore) {
+                          orderInPanel.items = parsed.items;
+                          notify(`${parsed.items.length}件のデータを復元しました`);
+                        } else {
+                          localStorage.removeItem('orderPanelDraft');
+                        }
+                      }
+                    }
+                  } catch(e) { /* ignore parse error */ }
                 }
               }
             };
@@ -2363,7 +2436,8 @@ window.__script2Ran = true;
                     if (!item.product) return;
                     
                     // 重複チェック
-                    const exists = orderInPanel.items.some(i => i.sourceRowIndex === idx);
+                    // 改善3-3: UIDベースの紐付け
+                    const exists = orderInPanel.items.some(i => i.sourceUid === item._uid);
                     if (exists) {
                         notify("既に追加されています", "error");
                         return;
@@ -2371,13 +2445,14 @@ window.__script2Ran = true;
 
                     const firstVendor = orderInPanel.items.length > 0 ? orderInPanel.items[0].vendor : null;
                     orderInPanel.items.push({
-                        sourceRowIndex: idx, // 元の行番号を保持
+                        sourceUid: item._uid, // 改善3-3: UIDで参照
                         product: item.product,
                         spec: item.spec || "",
                         qty: item.qty,
                         unit: item.unit,
-                        cost: item.cost || 0, 
-                        price: item.price || 0, // Phase 1: 売単価も保持
+                        estimateCost: item.cost || 0, // 改善2B: 見積原価（参照用）
+                        cost: item.cost || 0,
+                        price: item.price || 0,
                         vendor: firstVendor || item.vendor || "" 
                     });
                     
@@ -2396,17 +2471,11 @@ window.__script2Ran = true;
             // 選択中明細の件数
             const selectedItemsCount = computed(() => form.items.filter(i => i.selected).length );
             
-            // 選択モード切替
-            const toggleSelectionMode = () => {
-                isSelectionMode.value = !isSelectionMode.value;
-                if (!isSelectionMode.value) {
-                    form.items.forEach(i => { i.selected = false; });
-                    lastSelectedIndex.value = null;
-                }
-            };
+            // 改善5: モード廃止 — toggleSelectionMode は後方互換用に残す（no-op）
+            const toggleSelectionMode = () => {};
             
             const selectAllRows = () => {
-                form.items.forEach(i => { i.selected = true; });
+                form.items.forEach(i => { if (i.product) i.selected = true; });
             };
             
             const clearAllSelection = () => {
@@ -2414,7 +2483,7 @@ window.__script2Ran = true;
                 lastSelectedIndex.value = null;
             };
             
-            // 行選択（選択モード時: トグル or Shift範囲選択）
+            // 改善5: 行選択（チェックボックス列クリック: トグル or Shift範囲選択）
             const handleRowSelection = (idx, event) => {
                 if (event.shiftKey && lastSelectedIndex.value !== null) {
                     const start = Math.min(lastSelectedIndex.value, idx);
@@ -2428,6 +2497,55 @@ window.__script2Ran = true;
                 lastSelectedIndex.value = idx;
             };
             
+            // 改善6: スマート一括選択
+            const selectByVendorPrompt = () => {
+                const vendors = [...new Set(form.items.filter(i => i.vendor && i.vendor.trim()).map(i => i.vendor.trim()))];
+                if (vendors.length === 0) return notify("発注先が入力された行がありません", "error");
+                // 簡易: 1件ならそのまま選択、複数なら選択リスト表示
+                if (vendors.length === 1) {
+                    let cnt = 0;
+                    form.items.forEach(i => { if (i.vendor && i.vendor.trim() === vendors[0]) { i.selected = true; cnt++; } });
+                    notify(`「${vendors[0]}」の ${cnt} 件を選択しました`);
+                } else {
+                    const choice = prompt("発注先を入力してください:\n" + vendors.map((v,i) => `${i+1}. ${v}`).join("\n"));
+                    if (!choice) return;
+                    const target = vendors.find(v => v === choice.trim()) || vendors[parseInt(choice) - 1];
+                    if (!target) return notify("該当する発注先がありません", "error");
+                    let cnt = 0;
+                    form.items.forEach(i => { if (i.vendor && i.vendor.trim() === target) { i.selected = true; cnt++; } });
+                    notify(`「${target}」の ${cnt} 件を選択しました`);
+                }
+            };
+
+            const selectByCategoryPrompt = () => {
+                const cats = [...new Set(form.items.filter(i => i.category && i.category.trim()).map(i => i.category.trim()))];
+                if (cats.length === 0) return notify("工種が入力された行がありません", "error");
+                if (cats.length === 1) {
+                    let cnt = 0;
+                    form.items.forEach(i => { if (i.category && i.category.trim() === cats[0]) { i.selected = true; cnt++; } });
+                    notify(`「${cats[0]}」の ${cnt} 件を選択しました`);
+                } else {
+                    const choice = prompt("工種を入力してください:\n" + cats.map((c,i) => `${i+1}. ${c}`).join("\n"));
+                    if (!choice) return;
+                    const target = cats.find(c => c === choice.trim()) || cats[parseInt(choice) - 1];
+                    if (!target) return notify("該当する工種がありません", "error");
+                    let cnt = 0;
+                    form.items.forEach(i => { if (i.category && i.category.trim() === target) { i.selected = true; cnt++; } });
+                    notify(`「${target}」の ${cnt} 件を選択しました`);
+                }
+            };
+
+            const selectUnorderedRows = () => {
+                let cnt = 0;
+                form.items.forEach(i => {
+                    if (i.product && (!i.vendor || !(i.vendor||"").trim() || !Number(i.cost))) {
+                        i.selected = true; cnt++;
+                    }
+                });
+                if (cnt > 0) notify(`未発注の ${cnt} 件を選択しました`);
+                else notify("未発注行はありません");
+            };
+
             // 発注先一括変更
             const batchUpdateVendor = () => {
                 const vendor = (batchVendorSelect.value || "").trim();
@@ -2438,28 +2556,22 @@ window.__script2Ran = true;
                     item.vendor = vendor;
                     calcLine(item);
                 });
-                form.items.forEach(i => { i.selected = false; });
-                lastSelectedIndex.value = null;
                 notify(`${selected.length}件の発注先を更新しました`);
             };
             
             // Phase 3: 見積行削除時の同期
-            const addItem = () => form.items.push({ category: "", product: "", spec: "", qty: 1, unit: "", price: 0, cost: 0, amount: 0, orderedQty: 0, orderedAmount: 0, selected: false });
+            const addItem = () => form.items.push({ _uid: genUid(), category: "", product: "", spec: "", qty: 1, unit: "", price: 0, cost: 0, amount: 0, orderedQty: 0, orderedAmount: 0, selected: false });
 
             // 修正箇所: ここで removeItem を定義し、重複を解消
+            // 改善3-3: UIDベースの紐付け — インデックスずれのリスクを排除
             const removeItem = (i) => {
+                const removedUid = form.items[i]._uid;
                 form.items.splice(i, 1);
-                // 発注パネルからも削除し、インデックスを補正
-                if (orderInPanel.items.length > 0) {
-                    const idxToRemove = orderInPanel.items.findIndex(item => item.sourceRowIndex === i);
-                    if (idxToRemove !== -1) {
-                        orderInPanel.items.splice(idxToRemove, 1);
+                if (orderInPanel.items.length > 0 && removedUid) {
+                    const oIdx = orderInPanel.items.findIndex(item => item.sourceUid === removedUid);
+                    if (oIdx !== -1) {
+                        orderInPanel.items.splice(oIdx, 1);
                     }
-                    orderInPanel.items.forEach(item => {
-                        if (item.sourceRowIndex > i) {
-                            item.sourceRowIndex--;
-                        }
-                    });
                 }
             };
 
@@ -2471,16 +2583,38 @@ window.__script2Ran = true;
             const saveOrderFromPanel = async () => {
                 const itemsToSave = selectedItemsCount.value > 0 
                     ? form.items.filter(i => i.selected) 
-                    : orderInPanel.items.map(o => ({ ...form.items[o.sourceRowIndex], vendor: o.vendor, cost: o.cost, qty: o.qty }));
+                    : orderInPanel.items.map(o => {
+                        const src = form.items.find(fi => fi._uid === o.sourceUid);
+                        return { ...(src || {}), vendor: o.vendor, cost: o.cost, qty: o.qty };
+                    });
                 if (itemsToSave.length === 0) return notify("明細がありません", "error");
                 const noVendor = itemsToSave.filter(i => !(i.vendor || "").trim());
                 if (noVendor.length > 0) return notify("発注先が未入力の項目があります", "error");
+
+                // 改善7: 業者別プレビュー確認
+                const byVendorPreview = {};
+                itemsToSave.forEach(i => {
+                    const v = (i.vendor || "").trim();
+                    if (!byVendorPreview[v]) byVendorPreview[v] = { items: [], total: 0 };
+                    byVendorPreview[v].items.push(i);
+                    byVendorPreview[v].total += Math.round((i.qty||0) * (i.cost||0));
+                });
+                const vendorCount = Object.keys(byVendorPreview).length;
+                if (vendorCount > 1) {
+                    const lines = Object.entries(byVendorPreview).map(([v, d]) => 
+                        `  ■ ${v}: ${d.items.length}件 / ${formatCurrency(d.total)}`
+                    ).join("\n");
+                    const ok = await confirmAction(
+                        `${vendorCount}社に分かれた発注書が作成されます:\n\n${lines}\n\nよろしいですか？`
+                    );
+                    if (!ok) return;
+                }
                 
-                // 保存前に見積明細に反映（選択モードでない場合はorderInPanel経由）
+                // 改善2B: 発注パネルの変更を見積に反映（sourceUidベース）
                 if (selectedItemsCount.value === 0) {
                     orderInPanel.items.forEach(oItem => {
-                        if (oItem.sourceRowIndex !== null && form.items[oItem.sourceRowIndex]) {
-                            const row = form.items[oItem.sourceRowIndex];
+                        const row = form.items.find(fi => fi._uid === oItem.sourceUid);
+                        if (row) {
                             row.vendor = oItem.vendor || "";
                             row.cost = oItem.cost;
                             row.qty = oItem.qty;
@@ -2541,6 +2675,7 @@ window.__script2Ran = true;
                     if (saved > 0) {
                         notify(savedEstimate ? "見積と発注書を保存しました" : "発注書を作成しました");
                         orderInPanel.items = [];
+                        try { localStorage.removeItem('orderPanelDraft'); } catch(e) {}
                         if (selectedItemsCount.value > 0) form.items.forEach(i => { i.selected = false; });
                         await fetchOrders();
                         orderPanelTab.value = 'list';
@@ -2556,16 +2691,38 @@ window.__script2Ran = true;
             const createOrderPdfFromPanel = async () => {
                  const itemsForPdf = selectedItemsCount.value > 0 
                      ? form.items.filter(i => i.selected) 
-                     : orderInPanel.items.map(o => ({ ...form.items[o.sourceRowIndex], vendor: o.vendor, cost: o.cost, qty: o.qty }));
+                     : orderInPanel.items.map(o => {
+                         const src = form.items.find(fi => fi._uid === o.sourceUid);
+                         return { ...(src || {}), vendor: o.vendor, cost: o.cost, qty: o.qty };
+                     });
                  if (itemsForPdf.length === 0) return notify("明細がありません", "error");
                  const noVendor = itemsForPdf.filter(i => !(i.vendor || "").trim());
                  if (noVendor.length > 0) return notify("発注先が未入力の項目があります", "error");
+
+                 // 改善7: 業者別プレビュー確認（PDF）
+                 const byVendorPreview = {};
+                 itemsForPdf.forEach(i => {
+                     const v = (i.vendor || "").trim();
+                     if (!byVendorPreview[v]) byVendorPreview[v] = { items: [], total: 0 };
+                     byVendorPreview[v].items.push(i);
+                     byVendorPreview[v].total += Math.round((i.qty||0) * (i.cost||0));
+                 });
+                 const vendorCount = Object.keys(byVendorPreview).length;
+                 if (vendorCount > 1) {
+                     const lines = Object.entries(byVendorPreview).map(([v, d]) =>
+                         `  ■ ${v}: ${d.items.length}件 / ${formatCurrency(d.total)}`
+                     ).join("\n");
+                     const ok = await confirmAction(
+                         `${vendorCount}社分のPDFが作成されます:\n\n${lines}\n\nよろしいですか？`
+                     );
+                     if (!ok) return;
+                 }
                  
-                 // PDF作成前に見積明細に反映（選択モードでない場合のみ）
+                 // 改善2B: PDF作成前に見積明細に反映（sourceUidベース）
                  if (selectedItemsCount.value === 0) {
                      orderInPanel.items.forEach(oItem => {
-                         if (oItem.sourceRowIndex !== null && form.items[oItem.sourceRowIndex]) {
-                             const row = form.items[oItem.sourceRowIndex];
+                         const row = form.items.find(fi => fi._uid === oItem.sourceUid);
+                         if (row) {
                              row.vendor = oItem.vendor || "";
                              row.cost = oItem.cost;
                              row.qty = oItem.qty;
@@ -2846,7 +3003,7 @@ window.__script2Ran = true;
                     if (data) {
                         const firstVendor = data.items && data.items[0] && data.items[0].vendor;
                         form.header = { ...data.header, defaultVendor: data.header.defaultVendor || firstVendor || "" };
-                        form.items = (data.items || []).map(it => ({ ...it, selected: it.selected ?? false }));
+                        form.items = (data.items || []).map(it => ({ ...it, _uid: it._uid || genUid(), selected: it.selected ?? false }));
                         isReviewMode.value = (currentTab.value === 'admin'); 
                         showBackButton.value = fromList;
                         isDirty.value = false;
@@ -3137,10 +3294,11 @@ window.__script2Ran = true;
                 showLedgerModal, ledgerData, adminSubTab, analysisYear, analysisData, analysisTotalSales, analysisTotalProfit,
                 notifications, confirmState, form, filter, listSubTab, orderListFilter, orderListVendors, orderListYears, filteredOrderList,
                 showOcrModal, ocrFiles, isOcrLoading, selectedOcrFiles, showDraftModal, drafts, isDraftLoading, estimateCandidates,
-                showVendorSelectModal, vendorCandidates,
+                showVendorSelectModal, vendorCandidates, vendorSplitPreview,
                 showChatBot, chatInput, chatMessages, isChatThinking, sendChatMessage,
                 sidePanelMode, historyList, orderInPanel, toggleSidePanel, closeSidePanel, handleEstimateRowClick, saveOrderFromPanel, createOrderPdfFromPanel, orderPanelTab, editingOrderInPanel, currentEstimateOrders, reprintOrderPdf, openOrderForEdit, closeOrderEdit, calcEditedOrderLine, addEditOrderItem, removeEditOrderItem, saveEditedOrderFromPanel,
                 batchVendorSelect, selectedItemsCount, toggleSelectionMode, selectAllRows, clearAllSelection, handleRowSelection, batchUpdateVendor,
+                selectByVendorPrompt, selectByCategoryPrompt, selectUnorderedRows,
                 isSelectionMode, lastSelectedIndex,
                 saveConfirmState,
                 unifiedProducts, setMasters, searchMasterKeyword, searchSetKeyword, leftPanelMode, activeLeftPanelRow, filteredMasters, filteredSets, openLeftPanel, closeLeftPanel, applyMasterItem, applySetItem,

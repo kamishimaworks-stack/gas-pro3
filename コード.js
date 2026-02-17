@@ -742,53 +742,9 @@ function apiSaveUnifiedData(jsonData) {
     
     estSheet.getRange(estSheet.getLastRow() + 1, 1, estValues.length, 20).setValues(estValues.map(r => { while(r.length < 20) r.push(""); return r; }));
 
-    let orderSheet = ss.getSheetByName(CONFIG.sheetNames.order);
-    if (!orderSheet) { orderSheet = ss.insertSheet(CONFIG.sheetNames.order); checkAndFixOrderHeader(orderSheet); }
-    
-    const oData = orderSheet.getDataRange().getValues();
-    const oHeaders = oData[0] || [];
-    const relEstIdColIdx = oHeaders.indexOf('関連見積ID');
-    const orderRelEstCol = relEstIdColIdx !== -1 ? relEstIdColIdx : 3;
-    const orderRowsToDelete = [];
-    if (oData.length > 1) {
-        for (let i = 1; i < oData.length; i++) {
-            if (String(oData[i][orderRelEstCol]) === saveId) { orderRowsToDelete.push(i + 1); }
-        }
-        // Performance Tuning: Use Optimized Delete for Orders too
-        if (orderRowsToDelete.length > 0) {
-            deleteRowsOptimized_(orderSheet, orderRowsToDelete);
-        }
-    }
-
-    const email = Session.getActiveUser().getEmail();
-    const orderValues = [];
-    const vendorGroups = {};
-    if (estimateData.items) {
-      estimateData.items.forEach((item) => {
-          if (item.vendor && (Number(item.cost) > 0 || Number(item.qty) > 0)) {
-              const v = String(item.vendor).trim();
-              if (!vendorGroups[v]) vendorGroups[v] = [];
-              vendorGroups[v].push(item);
-          }
-      });
-    }
-    Object.keys(vendorGroups).forEach((vendor) => {
-      const items = vendorGroups[vendor];
-      const orderId = getNextSequenceId('order');
-      items.forEach((item, idx) => {
-        orderValues.push([
-            idx === 0 ? orderId : "",
-            saveTimestamp, item.vendor, saveId,
-            item.category, item.product, item.spec, item.qty, item.unit, item.cost, Math.round((Number(item.qty) || 0) * (Number(item.cost) || 0)),
-            estimateData.header.location, "発注書作成", "", email, "public"
-        ]);
-      });
-    });
-
-    if (orderValues.length > 0) {
-        const startRow = orderSheet.getLastRow() + 1;
-        orderSheet.getRange(startRow, 1, orderValues.length, 16).setValues(orderValues.map(r => { while(r.length < 16) r.push(""); return r; }));
-    }
+    // 改善2: 見積保存時の自動発注生成を廃止
+    // 発注データは apiSaveOrderOnly 経由で明示的に作成する
+    // これにより見積の原価/発注先の変更が既存発注を上書きしなくなる
 
     invalidateDataCache_();
     return JSON.stringify({ success: true, id: saveId });
