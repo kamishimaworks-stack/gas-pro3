@@ -1,0 +1,145 @@
+<? 
+  var h = data.header || {}; 
+  var id = h.id || ""; 
+  var date = h.date || ""; 
+  var client = h.client || ""; 
+  var project = h.project || ""; 
+  var payment = h.payment || ""; 
+  
+  var subtotalVal = Number(data.totalAmount) || 0; 
+  var taxVal = Math.floor(subtotalVal * 0.1); 
+  var totalVal = subtotalVal + taxVal; 
+  var total = "￥" + totalVal.toLocaleString() + "-"; 
+  
+  var pages = data.pages || [data.items];
+?>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>御請求書</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;700&family=Noto+Sans+JP:wght@400;700&display=swap');
+        @page { size: A4 portrait; margin: 0; }
+        body { font-family: 'Noto Serif JP', serif; padding: 25px 30px; color: #333; font-size: 10pt; }
+        .page-header { text-align: center; margin-bottom: 15px; }
+        .main-title { font-size: 24pt; font-weight: 700; border-bottom: 3px double #333; padding: 0 10px; }
+        
+        .flex-container { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        .flex-container td { vertical-align: top; }
+        
+        .customer-name { font-size: 16pt; font-weight: 700; border-bottom: 1px solid #333; min-width: 250px; display: inline-block; margin-bottom: 15px; }
+        .project-name { font-size: 11pt; margin-bottom: 5px; font-weight: bold; }
+        
+        /* 会社情報ブロックのレイアウト修正 */
+        /* 親tdを右寄せにし、このブロックをinline-blockかつ左揃えにすることで、
+           ブロック全体を右に寄せつつ、内部の左端（検印の左線）を揃える */
+        .company-block { display: inline-block; text-align: left; vertical-align: top; }
+        
+        .stamp-table { border-collapse: collapse; text-align: center; font-size: 9pt; margin-bottom: 5px; width: 180px; }
+        .stamp-table td { border: 1px solid #333; width: 60px; }
+        .stamp-header td { height: 20px; background-color: #f0f0f0; }
+        .stamp-body td { height: 60px; }
+
+        .company-info { margin-top: 5px; font-size: 10pt; line-height: 1.3; }
+        .company-name { font-size: 16pt; font-weight: 700; margin: 5px 0; }
+        .license-info { font-size: 9pt; margin-bottom: 5px; }
+        .logo-img { max-height: 50px; vertical-align: middle; margin-right: 10px; }
+
+        .total-box { border-top: 2px solid #333; border-bottom: 2px solid #333; padding: 6px; text-align: center; margin: 10px 0; font-size: 16pt; font-weight: bold; background: #f9f9f9; }
+        
+        .details-table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+        .details-table td { border: 1px solid #333; padding: 3px 5px; height: 18px; }
+        .header-cell { background-color: #e5e7eb; font-weight: bold; text-align: center; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        
+        .page-break { page-break-before: always; }
+        .page-number { font-size: 9pt; text-align: right; margin-top: -20px; margin-bottom: 10px; color: #666; }
+    </style>
+</head>
+<body>
+    <? for (var p = 0; p < pages.length; p++) { var items = pages[p]; ?>
+    <? if (p > 0) { ?><div class="page-break"></div><? } ?>
+    <div class="page-number"><?= p+1 ?> / <?= pages.length ?></div>
+
+    <? if (p === 0) { ?>
+    <div class="page-header"><span class="main-title">御 請 求 書</span></div>
+    <table class="flex-container">
+        <tr>
+            <td style="width: 55%;">
+                <div class="customer-name"><?= client ?> 御中</div>
+                <div class="project-name">件名：<?= project ?></div>
+                <div style="margin-top:20px;">
+                   下記のとおりご請求申し上げます。<br>
+                   お振込期限：<?= payment || '翌月末' ?>
+                </div>
+            </td>
+            <td style="width: 45%; text-align: right;">
+                <div class="company-block">
+                    <!-- 印鑑欄 -->
+                    <table class="stamp-table">
+                        <tr class="stamp-header"><td>検 印</td><td>検 印</td><td>作成者</td></tr>
+                        <tr class="stamp-body"><td></td><td></td><td></td></tr>
+                    </table>
+                    <div style="margin-bottom: 5px;">
+                        請求日: <?= date ?><br>
+                        No: <?= id ?>
+                    </div>
+                    <!-- 会社情報 -->
+                    <div class="company-info">
+                        <div class="license-info">愛知県知事許可（般-6）第64964号</div>
+                        <div style="display:flex; align-items:center;">
+                            <img src="<?!= include("logo") ?>" class="logo-img" onerror="this.style.display='none'">
+                            <div class="company-name">琉希工業株式会社</div>
+                        </div>
+                        <div>代表取締役　　足立　祐希</div>
+                        <div>〒444-0204</div>
+                        <div>岡崎市国正町字上川田44番地</div>
+                        <div>TEL (0564) 64-0721(代)</div>
+                        <div>FAX (0564) 64-0725</div>
+                        <div style="margin-top:5px; font-weight:bold;">適格請求書発行事業者登録番号: T0000000000000</div>
+                    </div>
+                </div>
+            </td>
+        </tr>
+    </table>
+    <div class="total-box">御請求金額： <?= total ?> <small>(税込)</small></div>
+    
+    <!-- 2ページ目以降の簡易ヘッダー -->
+    <? } else { ?>
+    <div style="border-bottom: 1px solid #333; margin-bottom: 10px; padding-bottom: 5px; display:flex; justify-content:space-between; align-items:flex-end;">
+        <div>
+            <span style="font-weight: bold;">件名：<?= project ?> (続き)</span>
+        </div>
+        <div style="font-size: 9pt; text-align: right;">
+            No: <?= id ?><br>
+            適格請求書発行事業者登録番号: T0000000000000
+        </div>
+    </div>
+    <? } ?>
+
+    <div class="details-section">
+        <table class="details-table">
+            <colgroup><col style="width:50%;"><col style="width:10%;"><col style="width:10%;"><col style="width:15%;"><col style="width:15%;"></colgroup>
+            <tbody>
+                <tr><td class="header-cell">内容</td><td class="header-cell">数量</td><td class="header-cell">単位</td><td class="header-cell">単価</td><td class="header-cell">金額</td></tr>
+                <? for(var i = 0; i < items.length; i++) { ?>
+                <tr>
+                    <? if (!items[i].isPadding) { ?>
+                        <td><?= (items[i].product||"") + (items[i].spec ? ' '+items[i].spec : '') ?></td>
+                        <td class="text-right"><?= items[i].qty ?></td>
+                        <td class="text-center"><?= items[i].unit ?></td>
+                        <td class="text-right"><?= items[i].price ? Number(items[i].price).toLocaleString() : '' ?></td>
+                        <td class="text-right"><?= items[i].amount ? Number(items[i].amount).toLocaleString() : '' ?></td>
+                    <? } else { ?>
+                        <td>&nbsp;</td><td></td><td></td><td></td><td></td>
+                    <? } ?>
+                </tr>
+                <? } ?>
+            </tbody>
+        </table>
+    </div>
+    <? } ?>
+</body>
+</html>

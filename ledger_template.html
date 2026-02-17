@@ -1,0 +1,136 @@
+<? 
+  var p = data.project || {};
+  var orders = data.orders || [];
+  var invoices = data.invoices || [];
+  var depositEntries = data.deposits || [];
+  var paymentEntries = data.payments || [];
+  var printDate = data.printDate || "";
+  function fmt(n) { return (Number(n)||0).toLocaleString(); }
+?>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>工事台帳</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
+    @page { size: A4 portrait; margin: 0; }
+    body { font-family: 'Noto Sans JP', sans-serif; padding: 40px; color: #333; font-size: 10pt; }
+    .header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+    .title { font-size: 18pt; font-weight: bold; }
+    .sub { font-size: 10pt; color: #666; }
+    table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+    th, td { border: 1px solid #333; padding: 6px; }
+    th { background: #e5e7eb; font-weight: bold; }
+    .num { text-align: right; }
+    .summary { display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+    .summary-box { border: 1px solid #333; padding: 8px; min-width: 100px; text-align: center; }
+    .summary-label { font-size: 8pt; color: #666; }
+    .summary-val { font-size: 12pt; font-weight: bold; }
+    .section-title { font-size: 11pt; font-weight: bold; margin-top: 20px; margin-bottom: 6px; border-left: 4px solid #333; padding-left: 8px; }
+    .footer { margin-top: 30px; font-size: 9pt; color: #666; }
+    .deposit-row { background: #eff6ff; }
+    .payment-row { background: #fef2f2; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">工事台帳</div>
+    <div class="sub">工事番号: <?= p.id || "" ?> | <?= p.project || "" ?> | <?= p.client || "" ?> 様</div>
+    <div class="sub">出力日: <?= printDate ?></div>
+  </div>
+  
+  <div class="summary">
+    <div class="summary-box"><div class="summary-label">売上(受注)</div><div class="summary-val"><?= fmt(data.sales) ?></div></div>
+    <div class="summary-box"><div class="summary-label">原価(発注)</div><div class="summary-val"><?= fmt(data.totalOrder) ?></div></div>
+    <div class="summary-box"><div class="summary-label">粗利</div><div class="summary-val"><?= fmt(data.profit) ?></div></div>
+    <div class="summary-box"><div class="summary-label">利益率</div><div class="summary-val"><?= data.profitRate || 0 ?>%</div></div>
+    <div class="summary-box"><div class="summary-label">入金済</div><div class="summary-val" style="color:#1d4ed8"><?= fmt(data.totalDeposit || 0) ?></div></div>
+    <div class="summary-box"><div class="summary-label">出金済</div><div class="summary-val" style="color:#dc2626"><?= fmt(data.totalWithdrawal || 0) ?></div></div>
+  </div>
+  
+  <div class="section-title">発注・請求明細</div>
+  <table>
+    <thead>
+      <tr><th>日付</th><th>区分</th><th>業者名 / 摘要</th><th class="num">発注金額</th><th class="num">支払済</th></tr>
+    </thead>
+    <tbody>
+      <? orders.forEach(function(o) { ?>
+      <tr>
+        <td><?= o.date ?></td>
+        <td>発注</td>
+        <td><strong><?= o.vendor ?></strong><br><span style="font-size:8pt;color:#666"><?= o.item || "" ?></span></td>
+        <td class="num"><?= fmt(o.amount) ?></td>
+        <td class="num">-</td>
+      </tr>
+      <? }); ?>
+      <? invoices.forEach(function(inv) { ?>
+      <tr style="background:#f0fdf4">
+        <td><?= inv.date ?></td>
+        <td>支払</td>
+        <td><strong><?= inv.vendor ?></strong><br><span style="font-size:8pt;color:#666"><?= inv.item || "" ?></span></td>
+        <td class="num">-</td>
+        <td class="num"><strong><?= fmt(inv.amount) ?></strong></td>
+      </tr>
+      <? }); ?>
+    </tbody>
+  </table>
+
+  <? if (depositEntries.length > 0) { ?>
+  <div class="section-title">入金明細</div>
+  <table>
+    <thead>
+      <tr><th>入金日</th><th>取引先</th><th>種別</th><th class="num">入金額</th><th class="num">手数料</th><th>備考</th></tr>
+    </thead>
+    <tbody>
+      <? depositEntries.forEach(function(d) { ?>
+      <tr class="deposit-row">
+        <td><?= d.date ?></td>
+        <td><?= d.client ?></td>
+        <td><?= d.type ?></td>
+        <td class="num"><strong><?= fmt(d.amount) ?></strong></td>
+        <td class="num"><?= fmt(d.fee) ?></td>
+        <td style="font-size:8pt"><?= d.remarks || "" ?></td>
+      </tr>
+      <? }); ?>
+      <tr style="background:#dbeafe;font-weight:bold">
+        <td colspan="3" style="text-align:right">入金合計</td>
+        <td class="num"><?= fmt(data.totalDeposit || 0) ?></td>
+        <td colspan="2"></td>
+      </tr>
+    </tbody>
+  </table>
+  <? } ?>
+
+  <? if (paymentEntries.length > 0) { ?>
+  <div class="section-title">出金明細</div>
+  <table>
+    <thead>
+      <tr><th>出金日</th><th>支払先</th><th>種別</th><th class="num">出金額</th><th class="num">手数料</th><th>備考</th></tr>
+    </thead>
+    <tbody>
+      <? paymentEntries.forEach(function(pm) { ?>
+      <tr class="payment-row">
+        <td><?= pm.date ?></td>
+        <td><?= pm.supplier ?></td>
+        <td><?= pm.type ?></td>
+        <td class="num"><strong><?= fmt(pm.amount) ?></strong></td>
+        <td class="num"><?= fmt(pm.fee) ?></td>
+        <td style="font-size:8pt"><?= pm.remarks || "" ?></td>
+      </tr>
+      <? }); ?>
+      <tr style="background:#fee2e2;font-weight:bold">
+        <td colspan="3" style="text-align:right">出金合計</td>
+        <td class="num"><?= fmt(data.totalWithdrawal || 0) ?></td>
+        <td colspan="2"></td>
+      </tr>
+    </tbody>
+  </table>
+  <? } ?>
+  
+  <div class="footer">
+    <img src="<?!= include("logo") ?>" style="max-height:40px;vertical-align:middle" onerror="this.style.display='none'">
+    琉希工業株式会社
+  </div>
+</body>
+</html>

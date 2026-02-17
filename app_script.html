@@ -1,0 +1,1084 @@
+    window.__script2Ran = true;
+    window.addEventListener('error', function(e) {
+      var lb = document.getElementById('loading-fallback');
+      var ce = document.getElementById('critical-error');
+      if (lb) lb.style.display = 'none';
+      if (ce) { ce.style.display = 'block'; ce.innerHTML = '<h3>スクリプトエラー</h3><pre>' + (e.message || e) + '</pre><p>' + (e.filename || '') + ':' + (e.lineno || '') + '</p>'; }
+      if (window._dbg) window._dbg('window.onerror','Uncaught error',{msg:String(e.message),file:e.filename,line:e.lineno},'E');
+    });
+    window.addEventListener('unhandledrejection', function(e) {
+      var lb = document.getElementById('loading-fallback');
+      var ce = document.getElementById('critical-error');
+      if (lb) lb.style.display = 'none';
+      if (ce) { ce.style.display = 'block'; ce.innerHTML = '<h3>非同期エラー</h3><pre>' + (e.reason && e.reason.message ? e.reason.message : String(e.reason)) + '</pre>'; }
+      if (window._dbg) window._dbg('unhandledrejection','Unhandled rejection',{reason:String(e.reason)},'D');
+    });
+    const gas = (funcName, ...args) => new Promise((resolve, reject) => {
+        if (typeof google === 'undefined' || !google.script) {
+            // #region agent log
+            window._dbg('gas','GAS env missing, using mock',{funcName,hasGoogle:typeof google!=='undefined'},'B');
+            // #endregion
+            console.warn("GAS環境ではありません。モックを返します。");
+            if(funcName === 'apiGetAuthStatus') resolve(JSON.stringify({ isAdmin: true, email: 'test@example.com' }));
+            else if(funcName === 'apiGetProjects') resolve('[]');
+            else if(funcName === 'apiGetOrders') resolve('[]'); 
+            else if(funcName === 'apiGetMasters') resolve(JSON.stringify({clients:['テスト建設'], sets:[], vendors:[]}));
+            else if(funcName === 'apiGetUnifiedProducts') resolve('[]'); // Mock
+            else if(funcName === 'apiSearchSets') resolve('[]'); // Mock
+            else if(funcName === 'apiGetInvoices') resolve('[]'); // Mock (fetchInvoices on mount)
+            else if(funcName === 'apiBatchInit') resolve(JSON.stringify({auth:JSON.stringify({isAdmin:true,email:'test@example.com'}),masters:JSON.stringify({clients:['テスト建設'],sets:[],vendors:[]}),projects:'[]',products:'[]',orders:'[]',invoices:'[]'})); // Mock
+            else reject('GAS Environment not found');
+            return;
+        }
+        google.script.run.withSuccessHandler(resolve).withFailureHandler(err => reject(new Error(err)))[funcName](...args);
+    });
+
+    // Helper for date (Phase 4)
+    function getJapaneseDateStr(date) {
+        try {
+            const d = date || new Date();
+            const year = d.getFullYear();
+            const month = d.getMonth() + 1;
+            const day = d.getDate();
+            if (year > 2019 || (year === 2019 && month >= 5)) {
+                const reiwaYear = year - 2018;
+                return `令和${reiwaYear === 1 ? '元' : reiwaYear}年${month}月${day}日`;
+            }
+            return `${year}年${month}月${day}日`;
+        } catch (e) { return ""; }
+    }
+
+    function mountMinimalFallback() {
+        var lb = document.getElementById('loading-fallback');
+        if (lb) lb.style.display = 'none';
+        try {
+            var minimal = Vue.createApp({ template: '<div style="padding:20px;font-size:18px;">簡易表示: Vue動作確認OK。本アプリの初期化で問題が発生しています。</div>', data: function() { return {}; } });
+            minimal.mount('#app');
+        } catch (e) {
+            document.getElementById('critical-error').innerHTML = '<h3>マウントエラー</h3><pre>' + (e.message||e) + '</pre>';
+            document.getElementById('critical-error').style.display = 'block';
+        }
+    }
+    try {
+        // #region agent log
+        if (window._dbg) window._dbg('init','Script start',{hasVue:typeof Vue!=='undefined',hasCreateApp:!!(typeof Vue!=='undefined'&&Vue.createApp)},'A');
+        // #endregion
+        if (typeof Vue === 'undefined' || !Vue.createApp) {
+            var ce = document.getElementById('critical-error');
+            var lb = document.getElementById('loading-fallback');
+            if (lb) lb.style.display = 'none';
+            if (ce) { ce.style.display = 'block'; ce.innerHTML = '<h3>Vue.js 読み込みエラー</h3><p>Vue.js が読み込まれていません。CDN（cdn.jsdelivr.net）がブロックされていないか確認してください。</p><p>ファイアウォールやプロキシの設定もご確認ください。</p>'; }
+            throw new Error('Vue is not loaded');
+        }
+        const { createApp, ref, reactive, onMounted, computed, nextTick, watch } = Vue;
+        
+        // Auto-resize directive
+        const vAutoResize = {
+            mounted: (el) => {
+                el.style.height = 'auto';
+                el.style.height = el.scrollHeight + 'px';
+                el.addEventListener('input', () => {
+                    el.style.height = 'auto';
+                    el.style.height = el.scrollHeight + 'px';
+                });
+            },
+            updated: (el) => {
+                el.style.height = 'auto';
+                el.style.height = el.scrollHeight + 'px';
+            }
+        };
+
+        const app = createApp({
+          directives: {
+              autoResize: vAutoResize
+          },
+          setup() {
+            const loading = ref(true); 
+            const loadingMessage = ref("起動中..."); 
+            const currentTab = ref("menu"); 
+            const userEmail = ref(""); 
+            const auth = reactive({ isAdmin: false }); 
+            const masters = reactive({ clients: [], sets: [], vendors: [] });
+            const projects = ref([]); 
+            const orders = ref([]); 
+            const adminInvoices = ref([]); 
+            const isReviewMode = ref(false);
+            const showBackButton = ref(false);
+            const isDirty = ref(false);
+            
+            // Phase 2: マスタデータ
+            const unifiedProducts = ref([]);
+            const setMasters = ref([]); // セット検索用
+            const searchMasterKeyword = ref("");
+            const searchSetKeyword = ref("");
+            const leftPanelMode = ref(null); // 'price' | 'set' | null
+            const activeLeftPanelRow = ref(null);
+
+            // 選択モード（Toggle Mode）
+            const isSelectionMode = ref(false);
+            const lastSelectedIndex = ref(null); // Shift範囲選択用
+
+            // Phase 4: 専用発注画面データ
+            const dedicatedOrderForm = reactive({
+                header: { id: "", vendor: "", date: getJapaneseDateStr(), relEstId: "", location: "", project: "", period: "", payment: "", expiry: "", status: "発注書作成", visibility: "public" },
+                items: [{ product: "", spec: "", qty: 1, unit: "", cost: 0, amount: 0 }]
+            });
+
+            // 請求書受取用データ
+            const invoiceFiles = ref([]);
+            const selectedInvoiceFile = ref(null);
+            const isAnalyzing = ref(false);
+            const invoiceForm = reactive({ id: "", constructionId: "", project: "", date: "", supplier: "", amount: 0, offset: 0, content: "", fileId: "", status: "未確認" });
+            const activeProjects = ref([]);
+            const orderBalance = ref(null);
+
+            // 会計連携用データ
+            const journalYear = ref(new Date().getFullYear());
+            const journalMonth = ref(new Date().getMonth() + 1);
+            const journalYears = ref([new Date().getFullYear()]);
+            const showPreviewModal = ref(false);
+            const previewData = reactive({ headers: [], rows: [] });
+            const journalIncludeSales = ref(false); 
+            const journalIncludePurchases = ref(true);
+            
+            // サジェスト用 (旧)
+            const activeSuggestionIdx = ref(null);
+            const filteredSuggestions = ref([]);
+            const showSidePanel = ref(false); const clientHistory = ref([]);
+            
+            // 工事台帳用
+            const showLedgerModal = ref(false);
+            const ledgerData = ref(null);
+
+            // 管理者サブタブ
+            const adminSubTab = ref("approval");
+            const analysisYear = ref(new Date().getFullYear());
+            const analysisData = reactive({ monthly: [], ranking: [] });
+            const analysisTotalSales = computed(() => analysisData.monthly.reduce((s, m) => s + m.sales, 0));
+            const analysisTotalProfit = computed(() => analysisData.monthly.reduce((s, m) => s + m.profit, 0));
+            let salesChartInstance = null;
+            
+            // Notification State & Helper
+            let _notifyId = 0;
+            const notifications = ref([]);
+            const notify = (msg, type='success') => {
+                const id = ++_notifyId;
+                notifications.value.push({ id, message: msg, type });
+                setTimeout(() => {
+                    const idx = notifications.value.findIndex(n => n.id === id);
+                    if(idx !== -1) notifications.value.splice(idx, 1);
+                }, 3000);
+            };
+
+            // Custom Confirm State & Helper
+            const confirmState = reactive({ show: false, message: "", resolve: null });
+            const confirmAction = (msg) => {
+                confirmState.message = msg;
+                confirmState.show = true;
+                return new Promise((resolve) => {
+                    confirmState.resolve = resolve;
+                });
+            };
+            const handleConfirm = (result) => {
+                confirmState.show = false;
+                if (confirmState.resolve) {
+                    confirmState.resolve(result);
+                    confirmState.resolve = null;
+                }
+            };
+
+            // Save Confirmation State
+            const saveConfirmState = reactive({ show: false, nextAction: null });
+            
+            // Navigation Helper with Save Check
+            const checkUnsavedChanges = (nextAction) => {
+                if (isDirty.value) {
+                    saveConfirmState.nextAction = nextAction;
+                    saveConfirmState.show = true;
+                } else {
+                    nextAction();
+                }
+            };
+
+            const handleSaveAndMove = async (shouldSave) => {
+                if (shouldSave) {
+                    const saveTarget = isReviewMode.value ? 'admin' : 'public';
+                    try {
+                        await saveEstimate(saveTarget);
+                        if (!isDirty.value && saveConfirmState.nextAction) {
+                            saveConfirmState.show = false;
+                            const fn = saveConfirmState.nextAction;
+                            saveConfirmState.nextAction = null;
+                            await Promise.resolve(fn());
+                        }
+                    } catch (e) {
+                        notify("保存中にエラーが発生しました: " + (e?.message || e), "error");
+                    }
+                } else {
+                    saveConfirmState.show = false;
+                    isDirty.value = false;
+                    const fn = saveConfirmState.nextAction;
+                    saveConfirmState.nextAction = null;
+                    if (fn) await Promise.resolve(fn());
+                }
+            };
+
+            // 定義 (form, orderForm)
+            const form = reactive({ header: { id: "", date: "", client: "", project: "", location: "", period: "", payment: "", expiry: "", status: "見積提出", visibility: "public" }, items: [] });
+            const filter = reactive({ year: "", month: "", client: "" });
+            
+            const showOcrModal = ref(false); const ocrFiles = ref([]); const isOcrLoading = ref(false); const selectedOcrFiles = ref([]);
+            const showDraftModal = ref(false); const drafts = ref([]); const isDraftLoading = ref(false);
+            const estimateCandidates = ref([]); // 追加
+            
+            // 業者選択モーダル用
+            const showVendorSelectModal = ref(false);
+            const vendorCandidates = ref([]);
+            
+            // サイドパネル用
+            const sidePanelMode = ref(null); // 'history' | 'order' | null
+            const historyList = ref([]);
+            const orderInPanel = reactive({ 
+                vendor: '',
+                items: [] 
+            });
+            const orderPanelTab = ref('create'); // 'create' | 'list'
+            const batchVendorSelect = ref('');
+            
+            const currentEstimateOrders = computed(() => {
+                if (!form.header.id) return [];
+                return orders.value.filter(o => o.relEstId === form.header.id);
+            });
+
+            // Phase 2: 左パネル用 computed (修正: 表示上限の緩和)
+            const filteredMasters = computed(() => {
+                const kw = searchMasterKeyword.value.toLowerCase().trim();
+                if (!kw) return unifiedProducts.value.slice(0, 1000); 
+                const keywords = kw.split(/\s+/).filter(k => k);
+                return unifiedProducts.value.filter(m => {
+                    const p = String(m.product || '').toLowerCase();
+                    const s = String(m.spec || '').toLowerCase();
+                    const c = String(m.category || '').toLowerCase();
+                    const src = String(m.source || '').toLowerCase();
+                    return keywords.every(k => p.includes(k) || s.includes(k) || c.includes(k) || src.includes(k));
+                }).slice(0, 1000);
+            });
+
+            const filteredSets = computed(() => {
+                const kw = searchSetKeyword.value.toLowerCase().trim();
+                let filtered = setMasters.value.filter(s => s.count > 0 && (s.totalPrice || 0) > 0);
+                if (!kw) return filtered.slice(0, 50);
+                return filtered.filter(s => s.name.toLowerCase().includes(kw)).slice(0, 50);
+            });
+
+            // Phase 4: 専用発注画面ロジック
+            const createNewDedicatedOrder = () => {
+                dedicatedOrderForm.header = { id: "", vendor: "", date: getJapaneseDateStr(), relEstId: "", location: "", project: "", period: "", payment: "", expiry: "", status: "発注書作成", visibility: "public" };
+                dedicatedOrderForm.items = [{ product: "", spec: "", qty: 1, unit: "", cost: 0, amount: 0 }];
+                isDirty.value = false;
+            };
+            const calcDedicatedLine = (item) => {
+                item.amount = Math.round((Number(item.qty)||0) * (Number(item.cost)||0));
+            };
+            const totalDedicatedAmount = computed(() => dedicatedOrderForm.items.reduce((s, i) => s + (Number(i.amount)||0), 0));
+            
+            const saveDedicatedOrder = async () => {
+                if(!dedicatedOrderForm.header.vendor) return notify("発注先を入力してください", "error");
+                if(dedicatedOrderForm.items.length === 0) return notify("明細がありません", "error");
+
+                loading.value = true;
+                try {
+                    const payload = JSON.stringify(dedicatedOrderForm);
+                    const res = await gas('apiSaveOrderOnly', payload);
+                    const r = JSON.parse(res);
+                    if(r.success) {
+                        dedicatedOrderForm.header.id = r.id;
+                        notify("保存しました (ID: " + r.id + ")");
+                        isDirty.value = false;
+                    } else {
+                        notify("保存失敗: " + r.message, "error");
+                    }
+                } catch(e) {
+                    notify("通信エラー: " + e.message, "error");
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const createDedicatedOrderPdf = async () => {
+                if(!dedicatedOrderForm.header.vendor) return notify("発注先を入力してください", "error");
+                loading.value = true;
+                try {
+                    const vendor = dedicatedOrderForm.header.vendor;
+                    const payload = {
+                        header: { ...dedicatedOrderForm.header },
+                        items: dedicatedOrderForm.items.map(i => ({ ...i, vendor }))
+                    };
+                    const res = await gas('apiCreateOrderPdf', JSON.stringify(payload), vendor);
+                    const r = JSON.parse(res);
+                    if (r.success) {
+                        window.open(r.url);
+                    } else {
+                        notify(r.message, "error");
+                    }
+                } catch(e) {
+                    notify("エラー: " + e.message, "error");
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const openLeftPanel = async (mode, rowIndex = null) => {
+                leftPanelMode.value = mode;
+                if (rowIndex !== null) {
+                    activeLeftPanelRow.value = rowIndex;
+                }
+                // 単価マスタ時: 未読込なら遅延取得
+                if (mode === 'price' && unifiedProducts.value.length === 0) {
+                    loadingMessage.value = '単価マスタ読込中';
+                    loading.value = true;
+                    try {
+                        const productsJson = await gas('apiGetUnifiedProducts');
+                        unifiedProducts.value = JSON.parse(productsJson);
+                    } catch(e) { console.error(e); }
+                    finally { loading.value = false; }
+                }
+                // セット検索時は初期データをロード
+                if (mode === 'set' && setMasters.value.length === 0) {
+                    searchSets();
+                }
+            };
+
+            const closeLeftPanel = () => {
+                leftPanelMode.value = null;
+                activeLeftPanelRow.value = null;
+            };
+
+            const applyMasterItem = (master) => {
+                if (activeLeftPanelRow.value !== null && form.items[activeLeftPanelRow.value]) {
+                    const row = form.items[activeLeftPanelRow.value];
+                    row.category = master.category !== '-' ? master.category : row.category;
+                    row.product = master.product;
+                    row.spec = master.spec;
+                    row.unit = master.unit;
+                    row.price = master.price;
+                    calcLine(row);
+                    notify("反映しました");
+                    // 続けて入力できるようにパネルは閉じない、あるいは次行へ移動するなどのUXも可
+                }
+            };
+
+            const searchSets = async () => {
+                try {
+                    const res = await gas('apiSearchSets', ''); // 全件取得
+                    setMasters.value = JSON.parse(res);
+                } catch(e) { console.error(e); }
+            };
+
+            const applySetItem = async (setName) => {
+                loading.value = true;
+                try {
+                    const res = await gas('apiGetSetDetails', setName);
+                    const items = JSON.parse(res);
+                    if (items && items.length > 0) {
+                        const isFixedAmountItem = (item) => {
+                            const p = String(item.product || '').trim();
+                            const c = String(item.category || '').trim();
+                            const masterAmt = Number(item.amount) || 0;
+                            return masterAmt < 0 || p.includes('重機回送費') || p.includes('諸経費') || p.includes('値引') ||
+                                   c.includes('重機回送費') || c.includes('諸経費') || c.includes('値引');
+                        };
+                        items.forEach(item => {
+                            const useMasterAmount = isFixedAmountItem(item);
+                            form.items.push({
+                                category: item.category,
+                                product: item.product,
+                                spec: item.spec,
+                                qty: item.qty,
+                                unit: item.unit,
+                                price: item.price,
+                                cost: 0, 
+                                amount: useMasterAmount ? (Number(item.amount) || 0) : Math.round(item.qty * item.price),
+                                orderedQty: 0, orderedAmount: 0,
+                                selected: false
+                            });
+                        });
+                        notify(`${items.length}件の明細を追加しました`);
+                    }
+                } catch(e) {
+                    notify("セット読込エラー: " + e.message, "error");
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            // Watch for changes
+            watch(() => form.items, () => { isDirty.value = true; }, { deep: true });
+            watch(() => form.header, () => { isDirty.value = true; }, { deep: true });
+            
+            // Phase 4: 専用発注画面の変更検知
+            watch(() => dedicatedOrderForm.items, () => { isDirty.value = true; }, { deep: true });
+            
+            window.addEventListener('beforeunload', (e) => {
+                if (isDirty.value) {
+                    e.preventDefault();
+                    e.returnValue = '';
+                }
+            });
+
+            const adminProjects = computed(() => {
+                if (!Array.isArray(projects.value)) return [];
+                return projects.value.filter(p => p.visibility === 'admin');
+            });
+            const adminOrders = computed(() => {
+                if (!Array.isArray(orders.value)) return [];
+                return orders.value.filter(o => o.visibility === 'admin' || o.status === '管理者確認中');
+            });
+            
+            onMounted(async () => { 
+              try {
+                  const fallback = document.getElementById('loading-fallback');
+                  if(fallback) fallback.style.display = 'none'; 
+                  
+                  // 起動時は auth + masters のみ（遅延ロードで起動時間短縮）
+                  const [authRes, mastersJson] = await Promise.all([
+                      gas('apiGetAuthStatus'),
+                      gas('apiGetMasters')
+                  ]);
+                  if (authRes) {
+                      const authData = JSON.parse(authRes);
+                      if (authData) { auth.isAdmin = !!authData.isAdmin; userEmail.value = authData.email || ""; }
+                  }
+                  const m = JSON.parse(mastersJson); 
+                  masters.clients = m.clients; masters.sets = m.sets; masters.vendors = m.vendors; 
+                  
+                  currentTab.value = 'menu';
+                  // projects, orders, unifiedProducts, invoices は画面遷移時に遅延取得
+              } catch(e) { 
+                  window.showCriticalError("Initialization Error:\n" + e.message); 
+              } 
+              finally { loading.value = false; } 
+            });
+            
+            // ... (既存メソッド省略なし) ...
+            const toggleSidePanel = async (mode) => {
+              if (sidePanelMode.value === mode) {
+                if (sidePanelMode.value === 'order') {
+                  orderInPanel.items = [];
+                  orderInPanel.vendor = "";
+                }
+                sidePanelMode.value = null; 
+              } else {
+                sidePanelMode.value = mode;
+                if (mode === 'history') {
+                    await loadEstimateHistory();
+                }
+              }
+            };
+            
+            const loadEstimateHistory = async () => {
+                isDraftLoading.value = true;
+                try {
+                    const res = await gas('apiGetDrafts');
+                    historyList.value = JSON.parse(res);
+                } catch(e) { notify("履歴読込失敗: " + e.message, "error"); }
+                finally { isDraftLoading.value = false; }
+            };
+            
+            // Phase 3: 見積行クリック時の連携処理改修 + Phase 1: 粗利計算用priceの追加
+            const handleEstimateRowClick = (item, idx) => {
+                if (sidePanelMode.value === 'order') {
+                    if (!item.product) return;
+                    
+                    // 重複チェック
+                    const exists = orderInPanel.items.some(i => i.sourceRowIndex === idx);
+                    if (exists) {
+                        notify("既に追加されています", "error");
+                        return;
+                    }
+
+                    orderInPanel.items.push({
+                        sourceRowIndex: idx, // 元の行番号を保持
+                        product: item.product,
+                        spec: item.spec || "",
+                        qty: item.qty,
+                        unit: item.unit,
+                        cost: item.cost || 0, 
+                        price: item.price || 0, // Phase 1: 売単価も保持
+                        vendor: item.vendor || "" 
+                    });
+                    
+                    if (!orderInPanel.vendor && item.vendor) {
+                        orderInPanel.vendor = item.vendor;
+                    }
+                    
+                    notify("発注パネルに追加しました");
+                }
+            };
+            
+            // Phase 1: 発注パネル用粗利計算
+            const calcPanelMargin = (item) => {
+                const p = Number(item.price) || 0;
+                const c = Number(item.cost) || 0;
+                if (!p) return 0;
+                return ((p - c) / p * 100).toFixed(1);
+            };
+
+            // 選択中明細の件数
+            const selectedItemsCount = computed(() => form.items.filter(i => i.selected).length );
+            
+            // 選択モード切替
+            const toggleSelectionMode = () => {
+                isSelectionMode.value = !isSelectionMode.value;
+                if (!isSelectionMode.value) {
+                    form.items.forEach(i => { i.selected = false; });
+                    lastSelectedIndex.value = null;
+                }
+            };
+            
+            const selectAllRows = () => {
+                form.items.forEach(i => { i.selected = true; });
+            };
+            
+            const clearAllSelection = () => {
+                form.items.forEach(i => { i.selected = false; });
+                lastSelectedIndex.value = null;
+            };
+            
+            // 行選択（選択モード時: トグル or Shift範囲選択）
+            const handleRowSelection = (idx, event) => {
+                if (event.shiftKey && lastSelectedIndex.value !== null) {
+                    const start = Math.min(lastSelectedIndex.value, idx);
+                    const end = Math.max(lastSelectedIndex.value, idx);
+                    for (let i = start; i <= end; i++) {
+                        form.items[i].selected = true;
+                    }
+                } else {
+                    form.items[idx].selected = !form.items[idx].selected;
+                }
+                lastSelectedIndex.value = idx;
+            };
+            
+            // 発注先一括変更
+            const batchUpdateVendor = () => {
+                const vendor = (batchVendorSelect.value || "").trim();
+                if (!vendor) return notify("発注先を選択してください", "error");
+                const selected = form.items.filter(i => i.selected);
+                if (selected.length === 0) return notify("変更する明細を選択してください", "error");
+                selected.forEach(item => {
+                    item.vendor = vendor;
+                    calcLine(item);
+                });
+                form.items.forEach(i => { i.selected = false; });
+                lastSelectedIndex.value = null;
+                notify(`${selected.length}件の発注先を更新しました`);
+            };
+            
+            // Phase 3: 見積行削除時の同期
+            const addItem = () => form.items.push({ category: "", product: "", spec: "", qty: 1, unit: "", price: 0, cost: 0, amount: 0, orderedQty: 0, orderedAmount: 0, selected: false });
+
+            // 修正箇所: ここで removeItem を定義し、重複を解消
+            const removeItem = (i) => {
+                form.items.splice(i, 1);
+                // 発注パネルからも削除し、インデックスを補正
+                if (orderInPanel.items.length > 0) {
+                    const idxToRemove = orderInPanel.items.findIndex(item => item.sourceRowIndex === i);
+                    if (idxToRemove !== -1) {
+                        orderInPanel.items.splice(idxToRemove, 1);
+                    }
+                    orderInPanel.items.forEach(item => {
+                        if (item.sourceRowIndex > i) {
+                            item.sourceRowIndex--;
+                        }
+                    });
+                }
+            };
+
+            // Phase 3: 発注パネルからアイテム削除
+            const removeOrderItem = (i) => {
+                orderInPanel.items.splice(i, 1);
+            };
+
+            const saveOrderFromPanel = async () => {
+                if (orderInPanel.items.length === 0) return notify("明細がありません", "error");
+                if (!orderInPanel.vendor) return notify("発注先を入力してください", "error");
+                
+                // 保存前に見積明細に反映
+                const vendor = orderInPanel.vendor;
+                orderInPanel.items.forEach(oItem => {
+                    if (oItem.sourceRowIndex !== null && form.items[oItem.sourceRowIndex]) {
+                        const row = form.items[oItem.sourceRowIndex];
+                        row.vendor = vendor || "";
+                        row.cost = oItem.cost;
+                        row.qty = oItem.qty;
+                        calcLine(row);
+                    }
+                });
+                
+                loading.value = true;
+                try {
+                    const orderData = {
+                        header: {
+                            vendor: orderInPanel.vendor,
+                            relEstId: form.header.id, 
+                            location: form.header.location,
+                            status: "発注書作成",
+                            visibility: "public"
+                        },
+                        items: orderInPanel.items.map(i => ({
+                            category: "発注", 
+                            product: i.product,
+                            spec: i.spec,
+                            qty: i.qty,
+                            unit: i.unit,
+                            cost: i.cost, 
+                            amount: Math.round(i.qty * i.cost)
+                        }))
+                    };
+                    
+                    const res = await gas('apiSaveOrderOnly', JSON.stringify(orderData));
+                    const r = JSON.parse(res);
+                    if (r.success) {
+                        notify("発注書を作成しました");
+                        orderInPanel.items = [];
+                        orderInPanel.vendor = "";
+                    } else {
+                        notify("作成失敗: " + r.message, "error");
+                    }
+                } catch(e) {
+                    notify("エラー: " + e.message, "error");
+                } finally {
+                    loading.value = false;
+                }
+            };
+            
+            const createOrderPdfFromPanel = async () => {
+                 if (orderInPanel.items.length === 0) return notify("明細がありません", "error");
+                 if (!orderInPanel.vendor) return notify("発注先を入力してください", "error");
+                 
+                 // PDF作成前に見積明細に反映（見積保存時に反映される）
+                 const vendor = orderInPanel.vendor;
+                 orderInPanel.items.forEach(oItem => {
+                     if (oItem.sourceRowIndex !== null && form.items[oItem.sourceRowIndex]) {
+                         const row = form.items[oItem.sourceRowIndex];
+                         row.vendor = vendor || "";
+                         row.cost = oItem.cost;
+                         row.qty = oItem.qty;
+                         calcLine(row);
+                     }
+                 });
+                 
+                 loading.value = true;
+                 try {
+                     const orderData = {
+                        header: {
+                            vendor: orderInPanel.vendor,
+                            relEstId: form.header.id,
+                            location: form.header.location,
+                            date: new Date().toLocaleDateString('ja-JP').split('/').join('/'), 
+                            status: "発注書作成",
+                            visibility: "public"
+                        },
+                        items: orderInPanel.items.map(i => ({
+                            category: "発注",
+                            product: i.product,
+                            spec: i.spec,
+                            qty: i.qty,
+                            unit: i.unit,
+                            cost: i.cost,
+                            amount: Math.round(i.qty * i.cost),
+                            vendor: orderInPanel.vendor
+                        }))
+                    };
+                    
+                    const res = await gas('apiCreateOrderPdf', JSON.stringify(orderData), orderInPanel.vendor);
+                    const r = JSON.parse(res);
+                    if (r.success) {
+                         window.open(r.url);
+                         notify("PDFを作成しました");
+                    } else {
+                         notify(r.message, "error");
+                    }
+                 } catch(e) {
+                     notify("PDF作成エラー: " + e.message, "error");
+                 } finally {
+                     loading.value = false;
+                 }
+            };
+
+            const goHome = async () => { 
+                isDirty.value = false;
+                isReviewMode.value = false; 
+                currentTab.value = 'menu'; 
+            };
+            const handleBack = () => { if(isReviewMode.value) { currentTab.value = 'admin'; } else { currentTab.value = 'list'; } };
+            const handleNavigation = (tab) => { checkUnsavedChanges(() => { currentTab.value = tab; }); };
+            const formatCurrency = (val) => Number(val || 0).toLocaleString();
+            
+            const fetchProjects = async (skipLoading = false) => { 
+                if(!skipLoading) loading.value = true; 
+                try { 
+                    const d = await gas('apiGetProjects'); 
+                    projects.value = JSON.parse(d); 
+                } finally { 
+                    if(!skipLoading) loading.value = false; 
+                } 
+            };
+            const fetchOrders = async () => { 
+                try { 
+                    const d = await gas('apiGetOrders'); 
+                    orders.value = JSON.parse(d); 
+                } catch(e) { console.error(e); orders.value = []; }
+            };
+            const fetchInvoices = async () => {
+                try {
+                    const d = await gas('apiGetInvoices');
+                    adminInvoices.value = JSON.parse(d);
+                } catch(e) { 
+                    // #region agent log
+                    window._dbg('fetchInvoices','fetchInvoices failed',{err:String(e?.message||e)},'D');
+                    // #endregion
+                    console.error(e); adminInvoices.value = []; 
+                }
+            }
+            
+            const goToProjectList = async () => { 
+                checkUnsavedChanges(async () => {
+                    loadingMessage.value = '読み込み中...';
+                    loading.value = true;
+                    try {
+                        await Promise.all([fetchProjects(true), fetchOrders(), fetchInvoices()]);
+                        currentTab.value = 'list'; 
+                    } finally { loading.value = false; }
+                });
+            };
+            const goToInvoice = async () => {
+                checkUnsavedChanges(async () => {
+                    loadingMessage.value = '読み込み中...';
+                    loading.value = true; 
+                    try { 
+                        // パラレル取得で請求書画面の読み込み高速化
+                        const [pList] = await Promise.all([
+                            gas('apiGetActiveProjectsList'),
+                            loadInvoiceFiles(),
+                            fetchInvoices()
+                        ]);
+                        activeProjects.value = JSON.parse(pList);
+                        resetInvoiceForm();
+                        currentTab.value = 'invoice';
+                    } finally { loading.value = false; }
+                });
+            };
+            const goToAdmin = async () => {
+                checkUnsavedChanges(async () => {
+                    if(auth.isAdmin) { 
+                        loadingMessage.value = '読み込み中...';
+                        loading.value=true; 
+                        try{ 
+                            // パラレル取得で管理画面の読み込み高速化
+                            const [, , , yList] = await Promise.all([
+                                fetchProjects(true),
+                                fetchOrders(),
+                                fetchInvoices(),
+                                gas('apiGetJournalYears')
+                            ]);
+                            journalYears.value = JSON.parse(yList); 
+                            if(journalYears.value.length > 0) journalYear.value = journalYears.value[0]; 
+                            await nextTick(); 
+                            currentTab.value = 'admin'; 
+                            loadAnalysis(); 
+                        } finally { setTimeout(() => { loading.value=false; }, 300); } 
+                    }
+                });
+            };
+
+            const filteredProjects = computed(() => {
+                let res = projects.value;
+                if (filter.year) res = res.filter(p => new Date(p.date).getFullYear() == filter.year);
+                if (filter.month) res = res.filter(p => new Date(p.date).getMonth() + 1 == filter.month);
+                if (filter.client) res = res.filter(p => p.client === filter.client);
+                return res;
+            });
+            
+            const stats = computed(() => {
+                const s = { totalSales: 0, totalCost: 0, totalInvoiced: 0, totalProfit: 0, margin: 0, pendingPayment: 0 };
+                filteredProjects.value.forEach(p => {
+                    s.totalSales += p.totalAmount;
+                    s.totalCost += p.totalOrderAmount;
+                    s.totalInvoiced += p.totalInvoicedAmount;
+                });
+                s.totalProfit = s.totalSales - s.totalCost;
+                s.margin = s.totalSales ? ((s.totalProfit / s.totalSales) * 100).toFixed(1) : 0;
+                adminInvoices.value.forEach(inv => {
+                    if (inv.status === '確認済') s.pendingPayment += Number(inv.payment || 0);
+                });
+                return s;
+            });
+            const years = computed(() => {
+                const ys = new Set(projects.value.map(p => new Date(p.date).getFullYear()));
+                return Array.from(ys).sort((a,b)=>b-a);
+            });
+
+            // 見積関連
+            const createNewEstimate = async () => {
+                if (unifiedProducts.value.length === 0) {
+                    loadingMessage.value = '読込中';
+                    loading.value = true;
+                    try {
+                        const productsJson = await gas('apiGetUnifiedProducts');
+                        unifiedProducts.value = JSON.parse(productsJson);
+                    } finally { loading.value = false; }
+                }
+                form.header = { id: "", client: "", project: "", location: "", period: "", payment: "", expiry: "", status: "見積提出", visibility: "public" };
+                form.items = [{ category: "", product: "", spec: "", qty: 1, unit: "", price: 0, cost: 0, amount: 0, orderedQty: 0, orderedAmount: 0, selected: false }];
+                isReviewMode.value = false;
+                isDirty.value = false;
+                currentTab.value = 'edit';
+            };
+            const loadEstimate = async (id, fromList=false) => {
+                loadingMessage.value = '読込中...';
+                loading.value = true;
+                try {
+                    const promises = [gas('apiGetEstimateDetails', id)];
+                    if (unifiedProducts.value.length === 0) promises.push(gas('apiGetUnifiedProducts'));
+                    const [res, productsJson] = await Promise.all(promises);
+                    if (productsJson) unifiedProducts.value = JSON.parse(productsJson);
+                    const data = JSON.parse(res);
+                    if (data) {
+                        form.header = data.header;
+                        form.items = (data.items || []).map(it => ({ ...it, selected: it.selected ?? false }));
+                        isReviewMode.value = (currentTab.value === 'admin'); 
+                        showBackButton.value = fromList;
+                        isDirty.value = false;
+                        currentTab.value = 'edit';
+                        sidePanelMode.value = null; 
+                        closeLeftPanel(); // パネルリセット
+                    } else {
+                        notify("データが見つかりません", "error");
+                    }
+                } catch(e) { notify("読込エラー: " + e.message, "error"); }
+                finally { loading.value = false; }
+            };
+            const saveEstimate = async (target) => {
+                loadingMessage.value = '保存中...';
+                loading.value = true;
+                try {
+                    if (target === 'admin') { form.header.status = '管理者確認中'; form.header.visibility = 'admin'; }
+                    else { form.header.visibility = 'public'; }
+                    
+                    const res = await gas('apiSaveUnifiedData', JSON.stringify({ estimate: form }));
+                    const r = JSON.parse(res);
+                    if (r.success) {
+                        form.header.id = r.id;
+                        isDirty.value = false;
+                        notify("保存しました");
+                    } else {
+                        notify("保存失敗: " + r.message, "error");
+                    }
+                } catch(e) { notify("通信エラー: " + e.message, "error"); }
+                finally { loading.value = false; }
+            };
+            
+            const createPdf = async () => {
+                loadingMessage.value = '見積PDF作成中...';
+                loading.value = true;
+                try {
+                    const res = await gas('apiSaveAndCreateEstimatePdf', JSON.stringify(form));
+                    const r = JSON.parse(res);
+                    if (r.success) {
+                        window.open(r.url);
+                        form.header.id = r.id;
+                        isDirty.value = false;
+                    } else {
+                        notify(r.message, "error");
+                    }
+                } catch(e) { notify("PDF作成エラー: " + e.message, "error"); }
+                finally { loading.value = false; }
+            };
+            
+            const createBillPdf = async () => {
+                if(!form.header.id) return notify("先に見積を保存してください", "error");
+                if(!await confirmAction("請求書を発行しますか？ステータスが「請求済」になります。")) return;
+                loading.value = true;
+                try {
+                    const res = await gas('apiIssueBillFromId', form.header.id);
+                    const r = JSON.parse(res);
+                    if(r.success) {
+                        window.open(r.url);
+                        notify("請求書を発行しました");
+                    } else {
+                        notify(r.message, "error");
+                    }
+                } catch(e) { notify("エラー: " + e.message, "error"); }
+                finally { loading.value = false; }
+            };
+
+            const createOrderPdf = () => {
+                const vendors = new Set();
+                form.items.forEach(item => {
+                    if(item.vendor) vendors.add(item.vendor);
+                });
+                const vendorList = Array.from(vendors);
+
+                if (vendorList.length === 0) {
+                    notify("発注先が入力されている明細がありません。", "error");
+                    return;
+                }
+
+                if (vendorList.length === 1) {
+                    selectVendorAndPrint(vendorList[0]);
+                } else {
+                    vendorCandidates.value = vendorList;
+                    showVendorSelectModal.value = true;
+                }
+            };
+
+            const selectVendorAndPrint = async (vendor) => {
+                showVendorSelectModal.value = false;
+                loadingMessage.value = '発注書作成中...';
+                loading.value = true;
+                try {
+                    await saveEstimate('public'); // 先に保存
+                    const r = JSON.parse(await gas('apiCreateOrderPdf', JSON.stringify(form), vendor));
+                    if(r.success) {
+                         window.open(r.url);
+                         notify("発注書を作成しました");
+                    } else {
+                         notify(r.message, "error");
+                    }
+                } catch(e) {
+                    notify("エラー: " + e.message, "error");
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const isFixedAmountRow = (item) => {
+                const amt = Number(item.amount) || 0;
+                const p = String(item.product || '').trim();
+                const c = String(item.category || '').trim();
+                return amt < 0 || p.includes('重機回送費') || p.includes('諸経費') || p.includes('値引') ||
+                       c.includes('重機回送費') || c.includes('諸経費') || c.includes('値引');
+            };
+            const calcLine = (item) => {
+                if (!isFixedAmountRow(item)) {
+                    item.amount = Math.round((Number(item.qty)||0) * (Number(item.price)||0));
+                }
+                item.orderedAmount = Math.round((Number(item.qty)||0) * (Number(item.cost)||0));
+            };
+            const totalAmount = computed(() => form.items.reduce((s, i) => s + (Number(i.amount) || 0), 0));
+            const totalEstimatedCost = computed(() => form.items.reduce((s, i) => s + (Number(i.orderedAmount) || 0), 0));
+            const calculateMargin = (item) => {
+                const rev = Number(item.amount) || 0;
+                if (!rev) return 0;
+                const cost = Number(item.orderedAmount) || 0;
+                return ((rev - cost) / rev * 100).toFixed(1);
+            };
+
+            const showSuggestions = (idx) => { activeSuggestionIdx.value = idx; filteredSuggestions.value = []; }; 
+            const hideSuggestions = () => { setTimeout(() => activeSuggestionIdx.value = null, 200); };
+            const applySuggestion = (idx, s) => { /* 実装省略 */ };
+            const onClientInput = async (e) => {
+                const val = e.target.value;
+                if(!val) { clientHistory.value = []; return; }
+                const res = await gas('apiGetClientHistory', val);
+                clientHistory.value = JSON.parse(res);
+                if(clientHistory.value.length > 0) showSidePanel.value = true;
+            };
+            
+            const loadInvoiceFiles = async () => { invoiceFiles.value = JSON.parse(await gas('apiListInvoiceDriveFiles')); };
+            const selectInvoiceFile = async (f) => { selectedInvoiceFile.value = f; isAnalyzing.value = true; invoiceForm.fileId = f.id; invoiceForm.id = ""; try { const r = JSON.parse(await gas('apiParseInvoiceFile', f.id)); Object.assign(invoiceForm, r); if(invoiceForm.constructionId) checkOrderBalance(); } finally { isAnalyzing.value = false; } };
+            const resetInvoiceForm = () => { Object.assign(invoiceForm, { id: "", constructionId: "", project: "", date: "", supplier: "", amount: 0, offset: 0, content: "", fileId: "", status: "未確認" }); selectedInvoiceFile.value = null; };
+            const checkOrderBalance = async () => { if(invoiceForm.constructionId && invoiceForm.supplier) orderBalance.value = JSON.parse(await gas('apiGetOrderBalance', invoiceForm.constructionId, invoiceForm.supplier)); };
+            const onProjectSelect = (e) => { const val = e.target.value; const p = activeProjects.value.find(ap => ap.name === val); if(p) { invoiceForm.constructionId = p.id; invoiceForm.project = p.name; checkOrderBalance(); } };
+            const registerInvoice = async () => { if(!invoiceForm.id && !selectedInvoiceFile.value) return notify("ファイル未選択", "error"); loading.value = true; try { const r = JSON.parse(await gas('apiSaveInvoice', JSON.stringify(invoiceForm))); if(r.success) { notify("登録しました"); resetInvoiceForm(); loadInvoiceFiles(); fetchInvoices(); } } finally { loading.value = false; } };
+            const editInvoice = (inv) => { Object.assign(invoiceForm, inv); selectedInvoiceFile.value = null; checkOrderBalance(); };
+            const updateInvoiceStatus = async (id, st) => { await gas('apiUpdateInvoiceStatus', id, st); fetchInvoices(); };
+            const deleteItem = async (id) => { if(await confirmAction("削除しますか？")) { await gas('apiDeleteData', id); notify("削除しました"); if(currentTab.value==='admin') goToAdmin(); } };
+            
+            const openLedger = async (id) => { loading.value = true; try { ledgerData.value = JSON.parse(await gas('apiGetProjectLedger', id)); showLedgerModal.value = true; } finally { loading.value = false; } };
+            const createLedgerPdf = async () => { loading.value = true; try { const r = JSON.parse(await gas('apiCreateLedgerPdf', JSON.stringify(ledgerData.value))); if(r.success) window.open(r.url); } finally { loading.value = false; } };
+            
+            const loadAnalysis = async () => { adminSubTab.value = 'analysis'; loading.value = true; try { const d = JSON.parse(await gas('apiGetAnalysisData', analysisYear.value)); analysisData.monthly = d.monthly; analysisData.ranking = d.ranking; nextTick(renderChart); } finally { loading.value = false; } };
+            const renderChart = () => {
+                const ctx = document.getElementById('salesChart'); if(!ctx) return;
+                if(salesChartInstance) salesChartInstance.destroy();
+                salesChartInstance = new Chart(ctx, { type: 'bar', data: { labels: [1,2,3,4,5,6,7,8,9,10,11,12].map(m=>m+'月'), datasets: [{label:'売上', data: analysisData.monthly.map(m=>m.sales), backgroundColor:'#3B82F6'}, {label:'粗利', data: analysisData.monthly.map(m=>m.profit), backgroundColor:'#10B981'}] } });
+            };
+            
+            const openDraftModal = async () => { showDraftModal.value = true; isDraftLoading.value = true; try { drafts.value = JSON.parse(await gas('apiGetDrafts')).filter(i => i.status === '下書き'); } finally { isDraftLoading.value = false; } };
+            const selectDraft = (id) => { showDraftModal.value = false; loadEstimate(id); };
+            const openOcrModal = async () => { showOcrModal.value = true; isOcrLoading.value = true; try { ocrFiles.value = JSON.parse(await gas('apiListDriveFiles')); } finally { isOcrLoading.value = false; } };
+            const toggleFileSelection = (f) => { const idx = selectedOcrFiles.value.indexOf(f.id); if(idx>=0) selectedOcrFiles.value.splice(idx,1); else selectedOcrFiles.value.push(f.id); };
+            const executeOcrMulti = async () => { loading.value = true; showOcrModal.value = false; try { const res = await gas('apiParseInvoiceFile', selectedOcrFiles.value[0]); /* 簡易実装 */ } finally { loading.value = false; } };
+            
+            const showPreview = async () => { loading.value = true; try { const res = JSON.parse(await gas('apiPreviewJournalData', journalYear.value, journalMonth.value, journalIncludeSales.value, journalIncludePurchases.value)); previewData.headers = res.headers; previewData.rows = res.rows; showPreviewModal.value = true; } finally { loading.value = false; } };
+            const downloadJournalCsv = async () => { loading.value = true; try { const res = JSON.parse(await gas('apiGenerateJournalData', journalYear.value, journalMonth.value, journalIncludeSales.value, journalIncludePurchases.value)); if(res.success) { const a = document.createElement('a'); a.href = "data:text/csv;base64," + res.data; a.download = res.filename; a.click(); } } finally { loading.value = false; } };
+
+            const reprintOrderPdf = async (orderId) => {
+                if(!await confirmAction("この発注書のPDFを再発行しますか？")) return;
+                loading.value = true;
+                try {
+                    const res = await gas('apiReprintOrderPdf', orderId);
+                    const r = JSON.parse(res);
+                    if (r.success) {
+                        window.open(r.url);
+                        notify("PDFを再発行しました");
+                    } else {
+                        notify(r.message, "error");
+                    }
+                } catch(e) {
+                    notify("エラー: " + e.message, "error");
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            return {
+                loading, loadingMessage, currentTab, userEmail, auth, masters, projects, orders, adminInvoices, isReviewMode, showBackButton, isDirty,
+                invoiceFiles, selectedInvoiceFile, isAnalyzing, invoiceForm, activeProjects, orderBalance,
+                journalYear, journalMonth, journalYears, showPreviewModal, previewData, journalIncludeSales, journalIncludePurchases,
+                activeSuggestionIdx, filteredSuggestions, showSidePanel, clientHistory,
+                showLedgerModal, ledgerData, adminSubTab, analysisYear, analysisData, analysisTotalSales, analysisTotalProfit,
+                notifications, confirmState, form, filter, 
+                showOcrModal, ocrFiles, isOcrLoading, selectedOcrFiles, showDraftModal, drafts, isDraftLoading, estimateCandidates,
+                showVendorSelectModal, vendorCandidates,
+                sidePanelMode, historyList, orderInPanel, toggleSidePanel, handleEstimateRowClick, saveOrderFromPanel, createOrderPdfFromPanel, orderPanelTab, currentEstimateOrders, reprintOrderPdf,
+                batchVendorSelect, selectedItemsCount, toggleSelectionMode, selectAllRows, clearAllSelection, handleRowSelection, batchUpdateVendor,
+                isSelectionMode, lastSelectedIndex,
+                saveConfirmState,
+                unifiedProducts, setMasters, searchMasterKeyword, searchSetKeyword, leftPanelMode, activeLeftPanelRow, filteredMasters, filteredSets, openLeftPanel, closeLeftPanel, applyMasterItem, applySetItem,
+                removeItem, removeOrderItem,
+                // Phase 1 Add: 粗利計算
+                calcPanelMargin,
+                // Phase 4 New Returns
+                dedicatedOrderForm, createNewDedicatedOrder, calcDedicatedLine, totalDedicatedAmount, saveDedicatedOrder, createDedicatedOrderPdf,
+                // Methods
+                goHome, handleBack, handleNavigation, formatCurrency, fetchProjects, fetchOrders, fetchInvoices, loadInvoiceFiles, goToProjectList, goToInvoice, goToAdmin, filteredProjects, stats, years, adminProjects, adminOrders,
+                createNewEstimate, loadEstimate, saveEstimate, createPdf, createBillPdf, createOrderPdf, selectVendorAndPrint,
+                addItem, calcLine, totalAmount, totalEstimatedCost, calculateMargin,
+                showSuggestions, hideSuggestions, applySuggestion, onClientInput, 
+                selectInvoiceFile, resetInvoiceForm, checkOrderBalance, onProjectSelect, registerInvoice, editInvoice, updateInvoiceStatus, deleteItem,
+                openLedger, createLedgerPdf, loadAnalysis, openDraftModal, selectDraft, openOcrModal, toggleFileSelection, executeOcrMulti,
+                showPreview, downloadJournalCsv, confirmAction, handleConfirm,
+                checkUnsavedChanges, handleSaveAndMove
+            };
+          }
+        });
+        
+        window.__mountAttempted = true;
+        app.mount('#app');
+        window.__mountComplete = true;
+        // #region agent log
+        if (window._dbg) window._dbg('mount','app.mount done',{},'E');
+        // #endregion
+        
+    } catch (e) {
+        // #region agent log
+        if (window._dbg) window._dbg('outer catch','Frontend Error',{err:String(e?.message||e),stack:(e?.stack||'').slice(0,300)},'E');
+        // #endregion
+        const lb = document.getElementById('loading-fallback');
+        const ce = document.getElementById('critical-error');
+        if (lb) lb.style.display = 'none';
+        if (ce) { ce.style.display = 'block'; ce.innerHTML = '<h3>初期化エラー</h3><pre>' + (e.message||e) + '</pre><p>上記エラーを管理者に伝えてください。</p>'; }
+    }
