@@ -7,11 +7,14 @@ const scriptProps = PropertiesService.getScriptProperties();
 const PROPS = scriptProps ? scriptProps.getProperties() || {} : {};
 
 const CONFIG = {
-  API_KEY:             PROPS.GEMINI_API_KEY || '', 
-  inputFolder:         PROPS.FOLDER_INPUT || '',        
-  invoiceInputFolder: PROPS.FOLDER_INVOICE_INPUT || '', 
+  API_KEY:             PROPS.GEMINI_API_KEY || '',
+  inputFolder:         PROPS.FOLDER_INPUT || '',
+  invoiceInputFolder: PROPS.FOLDER_INVOICE_INPUT || '',
   saveFolder:          PROPS.FOLDER_SAVE || '',
   logoFileId:          PROPS.IMAGE_FILE_ID || '',
+  LINE_TOKEN:          PROPS.LINE_CHANNEL_TOKEN || '',
+  LINE_USER_ID:        PROPS.LINE_USER_ID || '',
+  LINE_CHANNEL_SECRET: PROPS.LINE_CHANNEL_SECRET || '',
   sheetNames: {
     list: '見積リスト',
     order: '発注リスト',
@@ -229,8 +232,252 @@ function doGet() {
 }
 
 // -----------------------------------------------------------
+// LINE Webhook (doPost)
+// -----------------------------------------------------------
+
+function doPost(e) {
+  try {
+    // URLクエリパラメータでトークン検証
+    const params = e.parameter || {};
+    const secret = CONFIG.LINE_CHANNEL_SECRET || PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_SECRET') || '';
+    if (!secret) {
+      console.warn('doPost: LINE_CHANNEL_SECRET is not configured, skipping event processing');
+      return ContentService.createTextOutput('OK');
+    }
+    if (params.token !== secret) {
+      console.warn('doPost: invalid token');
+      return ContentService.createTextOutput('OK');
+    }
+
+    const body = JSON.parse(e.postData.contents);
+    if (!body || !Array.isArray(body.events)) {
+      return ContentService.createTextOutput('OK');
+    }
+
+    body.events.forEach(event => {
+      try {
+        processLineEvent_(event);
+      } catch (err) {
+        console.error('processLineEvent_ error: ' + err.toString());
+      }
+    });
+  } catch (ex) {
+    console.error('doPost error: ' + ex.toString());
+  }
+  return ContentService.createTextOutput('OK');
+}
+
+function processLineEvent_(event) {
+  const token = CONFIG.LINE_TOKEN || PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_TOKEN') || '';
+  if (!token) { console.warn('LINE_TOKEN not set'); return; }
+
+  if (event.type === 'follow') {
+    // 友だち追加時: ユーザーID自動登録 + ウェルカムメッセージ
+    const userId = event.source && event.source.userId;
+    if (userId) {
+      const existing = getLineUserIds_();
+      if (!existing.includes(userId)) {
+        existing.push(userId);
+        PropertiesService.getScriptProperties().setProperty('LINE_USER_IDS', existing.join(','));
+      }
+      sendLineReply_(event.replyToken, 'AI建築見積システムと連携しました。\nメッセージを送信すると請求書データとして受け付けます。\n\n【入力フォーマット例】\n請求元: ○○建設\n請求金額: 1000000\n請求日: 2026/02/20\n内容: 外壁塗装工事\n現場名: ○○邸新築工事');
+    }
+    return;
+  }
+
+  if (event.type === 'message' && event.message && event.message.type === 'text') {
+    const text = event.message.text;
+    if (!text || text.length > 5000) {
+      sendLineReply_(event.replyToken, 'メッセージが長すぎます（5000文字以内にしてください）');
+      return;
+    }
+
+    const parsed = parseLineMessage_(text);
+    if (!parsed || !parsed.supplier) {
+      sendLineReply_(event.replyToken, '内容を解析できませんでした。\n以下のフォーマットで送信してください:\n\n請求元: ○○建設\n請求金額: 1000000\n請求日: 2026/02/20\n内容: 外壁塗装工事\n現場名: ○○邸新築工事');
+      return;
+    }
+
+    // 請求書テキストファイルをDriveに作成
+    const folderId = CONFIG.invoiceInputFolder;
+    if (!folderId) {
+      sendLineReply_(event.replyToken, '請求書受取フォルダが未設定です。管理者に連絡してください。');
+      return;
+    }
+
+    const now = new Date();
+    const ts = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
+    const fileName = 'LINE_請求書_' + ts + '.txt';
+
+    // _parseTextInvoice() が読み取れる key: value 形式でファイル内容を生成
+    let content = '';
+    if (parsed.supplier) content += '請求元: ' + parsed.supplier + '\n';
+    if (parsed.amount) content += '請求金額: ' + parsed.amount + '\n';
+    if (parsed.date) content += '請求日: ' + parsed.date + '\n';
+    if (parsed.content) content += '内容: ' + parsed.content + '\n';
+    if (parsed.project) content += '現場名: ' + parsed.project + '\n';
+    if (parsed.constructionId) content += '工事番号: ' + parsed.constructionId + '\n';
+
+    const folder = DriveApp.getFolderById(folderId);
+    folder.createFile(fileName, content, MimeType.PLAIN_TEXT);
+
+    // 請求書ファイルキャッシュを無効化
+    try {
+      const cache = CacheService.getScriptCache();
+      cache.remove("invoice_files_" + String(folderId).slice(-8));
+    } catch (e) { /* ignore */ }
+
+    let reply = '請求書データを受け付けました。\n';
+    reply += 'Webアプリの請求書受取画面で確認・登録してください。\n\n';
+    if (parsed.supplier) reply += '請求元: ' + parsed.supplier + '\n';
+    if (parsed.amount) reply += '金額: ' + Number(parsed.amount).toLocaleString() + '円\n';
+    if (parsed.project) reply += '現場名: ' + parsed.project + '\n';
+
+    sendLineReply_(event.replyToken, reply);
+    return;
+  }
+}
+
+function parseLineMessage_(text) {
+  // 1. 構造化フォーマット（正規表現）
+  const structured = parseStructuredMessage_(text);
+  if (structured && structured.supplier) return structured;
+
+  // 2. Gemini APIフォールバック
+  try {
+    return parseLineMessageWithGemini_(text);
+  } catch (e) {
+    console.error('parseLineMessageWithGemini_ failed: ' + e.toString());
+    return null;
+  }
+}
+
+function parseStructuredMessage_(text) {
+  const result = {};
+  const patterns = {
+    supplier:       /(?:請求元|業者名|会社名)[：:\s]*(.+)/,
+    amount:         /(?:金額|請求金額|合計)[：:\s]*([0-9０-９,，]+)/,
+    date:           /(?:日付|請求日|発行日)[：:\s]*(.+)/,
+    content:        /(?:内容|品名|但し書き)[：:\s]*(.+)/,
+    project:        /(?:工事名|現場名|案件名)[：:\s]*(.+)/,
+    constructionId: /(?:工事番号|工事ID)[：:\s]*(.+)/
+  };
+  const lines = text.split(/\r?\n/);
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    Object.keys(patterns).forEach(key => {
+      const m = trimmed.match(patterns[key]);
+      if (m && !result[key]) {
+        let val = m[1].trim();
+        if (key === 'amount') {
+          val = toHalfWidth(val).replace(/[,，]/g, '');
+        }
+        result[key] = val;
+      }
+    });
+  });
+  return result.supplier ? result : null;
+}
+
+function parseLineMessageWithGemini_(text) {
+  if (!CONFIG.API_KEY) return null;
+
+  const prompt = '以下のテキストから請求書に関する情報を抽出してJSON形式で返してください。' +
+    'キー: supplier(請求元・業者名), amount(金額・数値), date(日付・yyyy/MM/dd形式), content(内容・品名), project(工事名・現場名), constructionId(工事番号)。' +
+    '該当しない項目はnullにしてください。\n\nテキスト:\n' + text;
+
+  const responseSchema = {
+    "type": "OBJECT",
+    "properties": {
+      "supplier":       { "type": "STRING" },
+      "amount":         { "type": "NUMBER" },
+      "date":           { "type": "STRING" },
+      "content":        { "type": "STRING" },
+      "project":        { "type": "STRING" },
+      "constructionId": { "type": "STRING" }
+    }
+  };
+
+  const res = UrlFetchApp.fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${CONFIG.API_KEY}`,
+    {
+      method: 'post', contentType: 'application/json',
+      payload: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { response_mime_type: 'application/json', response_schema: responseSchema }
+      }),
+      muteHttpExceptions: true
+    }
+  );
+
+  const json = JSON.parse(res.getContentText());
+  if (json.error || !json.candidates || !json.candidates[0]) return null;
+  const parsed = JSON.parse(json.candidates[0].content.parts[0].text);
+  return parsed && parsed.supplier ? parsed : null;
+}
+
+
+function sendLineReply_(replyToken, message) {
+  const token = CONFIG.LINE_TOKEN || PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_TOKEN') || '';
+  if (!token || !replyToken) return;
+  try {
+    UrlFetchApp.fetch('https://api.line.me/v2/bot/message/reply', {
+      method: 'post', contentType: 'application/json',
+      headers: { 'Authorization': 'Bearer ' + token },
+      payload: JSON.stringify({ replyToken: replyToken, messages: [{ type: 'text', text: message }] }),
+      muteHttpExceptions: true
+    });
+  } catch (e) {
+    console.error('sendLineReply_ failed: ' + e.toString());
+  }
+}
+
+function sendLinePush_(userId, message) {
+  const token = CONFIG.LINE_TOKEN || PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_TOKEN') || '';
+  if (!token || !userId) return;
+  try {
+    UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+      method: 'post', contentType: 'application/json',
+      headers: { 'Authorization': 'Bearer ' + token },
+      payload: JSON.stringify({ to: userId, messages: [{ type: 'text', text: message }] }),
+      muteHttpExceptions: true
+    });
+  } catch (e) {
+    console.error('sendLinePush_ failed: ' + e.toString());
+  }
+}
+
+function apiSaveLineChannelSecret(secret) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    props.setProperty('LINE_CHANNEL_SECRET', secret || '');
+    CONFIG.LINE_CHANNEL_SECRET = secret || '';
+    return JSON.stringify({ success: true, message: 'チャネルシークレットを保存しました' });
+  } catch (e) {
+    return JSON.stringify({ success: false, message: e.toString() });
+  }
+}
+
+function apiGetWebhookUrl() {
+  try {
+    const url = ScriptApp.getService().getUrl();
+    const secret = CONFIG.LINE_CHANNEL_SECRET || PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_SECRET') || '';
+    const webhookUrl = secret ? url + '?token=' + encodeURIComponent(secret) : url;
+    return JSON.stringify({ success: true, url: webhookUrl });
+  } catch (e) {
+    return JSON.stringify({ success: false, message: 'Webhook URLを取得できません。ウェブアプリとしてデプロイしてください。' });
+  }
+}
+
+// -----------------------------------------------------------
 // シート初期化
 // -----------------------------------------------------------
+
+function checkAndFixEstimateHeader(sheet) {
+  if (!sheet) return;
+  const headers = ["ID", "日付", "顧客名", "工種", "品名", "仕様", "数量", "単位", "原価", "単価", "金額", "備考", "工事場所", "工事名", "工期", "支払条件", "有効期限", "状態", "発注先", "公開範囲"];
+  if (sheet.getLastRow() === 0) { sheet.appendRow(headers); }
+}
 
 function checkAndFixOrderHeader(sheet) {
   if (!sheet) return;
@@ -374,7 +621,8 @@ function apiGetUnifiedProducts() {
     const lastRow = lSheet.getLastRow();
     const HISTORY_LIMIT = 500;  // 履歴データは直近500件に制限（起動時間短縮）
     const startRow = Math.max(2, lastRow - HISTORY_LIMIT + 1);
-    const data = lSheet.getRange(startRow, 1, lastRow, 10).getValues();
+    const numRows = lastRow - startRow + 1;
+    const data = lSheet.getRange(startRow, 1, numRows, 10).getValues();
     for (let i = data.length - 1; i >= 0; i--) {
       const r = data[i];
       if (r[4] && r[9]) {
@@ -571,9 +819,9 @@ function apiGetProjects() {
         const summary = orderSummary[currentId] || { totalCost: 0, orderCount: 0 };
         const invSummary = invoiceSummary[currentId] || { totalInvoiced: 0, invoiceCount: 0 };
         const depSummary = depositSummary[currentId] || { totalDeposit: 0, depositCount: 0 };
-        projectMap[currentId] = { 
-          id: currentId, date: formatDate(row[1]), client: row[2], project: row[13], location: row[12], 
-          status: row[17] || "未作成", visibility: row[19] || 'public', 
+        projectMap[currentId] = {
+          id: currentId, date: formatDate(row[1]), client: row[2], project: row[13], location: row[12],
+          status: row[17] || "未作成", visibility: row[19] || 'public',
           totalAmount: 0, totalOrderAmount: summary.totalCost, orderCount: summary.orderCount,
           totalInvoicedAmount: invSummary.totalInvoiced, invoiceCount: invSummary.invoiceCount,
           totalDeposit: depSummary.totalDeposit, depositCount: depSummary.depositCount
@@ -709,7 +957,7 @@ function apiSaveUnifiedData(jsonData) {
     }
 
     let estSheet = ss.getSheetByName(CONFIG.sheetNames.list);
-    if (!estSheet) estSheet = ss.insertSheet(CONFIG.sheetNames.list);
+    if (!estSheet) { estSheet = ss.insertSheet(CONFIG.sheetNames.list); checkAndFixEstimateHeader(estSheet); }
     
     let saveId = estimateData.header.id;
     if (!saveId) saveId = getNextSequenceId('estimate');
@@ -734,12 +982,12 @@ function apiSaveUnifiedData(jsonData) {
         isFirst ? estimateData.header.period : "", 
         isFirst ? estimateData.header.payment : "", 
         isFirst ? estimateData.header.expiry : "", 
-        isFirst ? (estimateData.header.status || "見積提出") : "", 
-        item.vendor, 
-        isFirst ? (estimateData.header.visibility || 'public') : "" 
+        isFirst ? (estimateData.header.status || "見積提出") : "",
+        item.vendor,
+        isFirst ? (estimateData.header.visibility || 'public') : ""
       ];
     });
-    
+
     estSheet.getRange(estSheet.getLastRow() + 1, 1, estValues.length, 20).setValues(estValues.map(r => { while(r.length < 20) r.push(""); return r; }));
 
     // 改善2: 見積保存時の自動発注生成を廃止
@@ -932,6 +1180,7 @@ function apiGetOrders() {
   }
 
   // PDF存在チェック用: ドライブフォルダ内のPDFファイル名を収集
+  // ※キャッシュなし。リクエスト毎にDrive APIを呼び出すため、大量PDFの場合は要最適化
   let pdfFileNames = [];
   try {
     const folder = getSaveFolder();
@@ -963,14 +1212,26 @@ function apiGetOrders() {
   }
 
   // PDF存在チェック & プロジェクト名取得
+  // 見積ヘッダーMapを事前構築 (N+1回避)
+  const estHeaderMap = new Map();
+  const estListSheet = ss.getSheetByName(CONFIG.sheetNames.list);
+  if (estListSheet && estListSheet.getLastRow() > 1) {
+    const estData = estListSheet.getDataRange().getValues();
+    for (let i = 1; i < estData.length; i++) {
+      const eid = String(estData[i][0]);
+      if (eid && !estHeaderMap.has(eid)) {
+        estHeaderMap.set(eid, { project: estData[i][13], client: estData[i][2], location: estData[i][12] });
+      }
+    }
+  }
   const list = Array.from(orderMap.values());
   list.forEach(order => {
     // PDF存在チェック: 発注書_業者名_ でファイル名マッチ
     const cleanVendor = (order.vendor || '').replace(/[\r\n\t\\/:*?"<>|]/g, '').trim();
     order.hasPdf = pdfFileNames.some(fn => fn.includes('発注書_' + cleanVendor));
-    // 関連見積IDからプロジェクト名を推定 (見積リストの工事名)
+    // 関連見積IDからプロジェクト名を推定 (Map参照)
     if (order.relEstId) {
-      const est = _getEstimateHeaderOnly(order.relEstId);
+      const est = estHeaderMap.get(order.relEstId);
       if (est) order.project = est.project || '';
     }
   });
@@ -1315,7 +1576,98 @@ function _parseInvoiceImageWithGemini(file) {
     payload: JSON.stringify({ contents: [{ parts }], generationConfig: { response_mime_type: "application/json", response_schema: responseSchema } }),
     muteHttpExceptions: true
   });
-  return JSON.parse(JSON.parse(res.getContentText()).candidates[0].content.parts[0].text);
+  const json = JSON.parse(res.getContentText());
+  if (json.error) throw new Error("Gemini API Error: " + json.error.message);
+  if (!json.candidates || !json.candidates[0]) throw new Error("AIから回答を取得できませんでした");
+  return JSON.parse(json.candidates[0].content.parts[0].text);
+}
+
+// ── 見積OCR機能 ──────────────────────────────────
+function apiOcrEstimateFromDrive(fileId) {
+  try {
+    const file = DriveApp.getFileById(fileId);
+    const mime = file.getMimeType();
+    if (mime.includes("text") || file.getName().endsWith(".txt")) {
+      return JSON.stringify(_parseTextEstimateItems(file));
+    }
+    return JSON.stringify(_parseEstimateImageWithGemini(
+      Utilities.base64Encode(file.getBlob().getBytes()), mime
+    ));
+  } catch (e) { return JSON.stringify({ error: e.toString() }); }
+}
+
+function apiOcrEstimateFromBase64(base64Data, mimeType) {
+  try {
+    if (!base64Data || !mimeType) return JSON.stringify({ error: "データが不足しています" });
+    return JSON.stringify(_parseEstimateImageWithGemini(base64Data, mimeType));
+  } catch (e) { return JSON.stringify({ error: e.toString() }); }
+}
+
+function _parseEstimateImageWithGemini(base64, mime) {
+  if (!CONFIG.API_KEY) return { error: "APIキーが未設定です" };
+  const prompt = `あなたは建築積算の専門家です。この画像/PDFから見積書・請求書・納品書の明細行を読み取り、すべての品目を抽出してください。
+【抽出ルール】
+- 各行の「工種(カテゴリ)」「品名」「仕様・規格」「数量」「単位」「単価」を読み取る
+- 数量が空欄の場合は 1 とする
+- 単位が空欄の場合は "式" とする
+- 単価が不明な場合は 0 とする
+- 金額欄しかない場合は、数量=1, 単位="式", 単価=金額 とする
+- ヘッダ行・合計行・消費税行は除外する
+- 工種/カテゴリが明記されていない場合は空文字列にする`;
+  const parts = [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }];
+  const responseSchema = {
+    "type": "OBJECT",
+    "properties": {
+      "items": {
+        "type": "ARRAY",
+        "items": {
+          "type": "OBJECT",
+          "properties": {
+            "category": { "type": "STRING", "description": "工種・カテゴリ" },
+            "product":  { "type": "STRING", "description": "品名・品目名" },
+            "spec":     { "type": "STRING", "description": "仕様・規格・サイズ" },
+            "qty":      { "type": "NUMBER", "description": "数量" },
+            "unit":     { "type": "STRING", "description": "単位(式, m, m2, 枚, 個 等)" },
+            "price":    { "type": "NUMBER", "description": "単価(円)" }
+          },
+          "required": ["product"]
+        }
+      }
+    },
+    "required": ["items"]
+  };
+  const res = UrlFetchApp.fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${CONFIG.API_KEY}`,
+    { method: "post", contentType: "application/json",
+      payload: JSON.stringify({ contents: [{ parts }], generationConfig: { response_mime_type: "application/json", response_schema: responseSchema } }),
+      muteHttpExceptions: true }
+  );
+  const json = JSON.parse(res.getContentText());
+  if (json.error) return { error: "Gemini API Error: " + json.error.message };
+  if (!json.candidates || !json.candidates[0]) return { error: "AIから回答を取得できませんでした" };
+  const parsed = JSON.parse(json.candidates[0].content.parts[0].text);
+  return { items: (parsed.items || []).map(item => ({
+    category: item.category || "", product: item.product || "", spec: item.spec || "",
+    qty: Number(item.qty) || 1, unit: item.unit || "式", price: Number(item.price) || 0
+  }))};
+}
+
+function _parseTextEstimateItems(file) {
+  let content = "";
+  try {
+    content = file.getBlob().getDataAsString();
+    if (!content.match(/品名|工種|数量|単価|仕様/)) content = file.getBlob().getDataAsString('Shift_JIS');
+  } catch(e) { return { error: "テキストの読み取りに失敗しました" }; }
+  const lines = content.split(/\r\n|\n/).filter(l => l.trim());
+  const items = [];
+  lines.forEach(line => {
+    const cols = line.split(/\t/);
+    if (cols.length >= 2) {
+      items.push({ category: cols[0] || "", product: cols[1] || "", spec: cols[2] || "",
+        qty: parseCurrency(cols[3]) || 1, unit: cols[4] || "式", price: parseCurrency(cols[5]) || 0 });
+    }
+  });
+  return { items };
 }
 
 function apiSaveInvoice(jsonData) {
@@ -1344,8 +1696,9 @@ function apiSaveInvoice(jsonData) {
         data.offset || 0, payment, data.content || "", data.remarks || "", data.registrationNumber || ""
     ];
     if (rowIndex > 0) {
+        // 既存レコードの更新時はステータスを維持する (ユーザーが手動変更した値を上書きしないため)
         const currentStatus = sheet.getRange(rowIndex, 2).getValue();
-        rowValues[1] = currentStatus; 
+        rowValues[1] = currentStatus;
         sheet.getRange(rowIndex, 1, 1, rowValues.length).setValues([rowValues]);
     } else {
         sheet.appendRow(rowValues);
@@ -1550,7 +1903,7 @@ function apiSaveDeposit(jsonData) {
       }
     }
 
-    id = id || getNextDepositId_();
+    id = getNextDepositId_();
     const rowValues = [
       id, now, data.date || now, data.estimateId || "", data.client || "", data.project || "",
       data.type || "振込", Number(data.amount) || 0, Number(data.fee) || 0, Number(data.offset) || 0,
@@ -1596,7 +1949,7 @@ function apiSavePayment(jsonData) {
       }
     }
 
-    id = id || getNextPaymentId_();
+    id = getNextPaymentId_();
     const rowValues = [
       id, now, data.date || now, data.orderId || "", data.invoiceId || "", data.supplier || "", data.project || "",
       data.type || "振込", Number(data.amount) || 0, Number(data.fee) || 0, Number(data.offset) || 0,
@@ -1837,6 +2190,8 @@ function apiPredictUnitPrice(product, spec) {
       method: "post", contentType: "application/json", payload: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }), muteHttpExceptions: true
     });
     const json = JSON.parse(res.getContentText());
+    if (json.error) return JSON.stringify({ error: "Gemini API Error: " + json.error.message });
+    if (!json.candidates || !json.candidates[0]) return JSON.stringify({ error: "AIから回答を取得できませんでした" });
     const text = json.candidates[0].content.parts[0].text;
     return JSON.stringify({ price: parseCurrency(text) });
   } catch (e) { return JSON.stringify({ error: e.toString() }); }
@@ -1965,6 +2320,14 @@ function apiGetProjectLedger(projectId) {
   }
 
   // 出金データ取得
+  // 発注ID→関連見積IDのMapを事前構築 (N+1回避)
+  const orderIdToEstIdMap = new Map();
+  if (ordSheet && ordSheet.getLastRow() > 1) {
+    const oData2 = ordSheet.getDataRange().getDisplayValues();
+    for (let j = 1; j < oData2.length; j++) {
+      if (oData2[j][0]) orderIdToEstIdMap.set(oData2[j][0], oData2[j][3] || '');
+    }
+  }
   const paySheet = ss.getSheetByName(CONFIG.sheetNames.payments);
   const paymentEntries = [];
   let totalPaymentAmount = 0;
@@ -1973,7 +2336,6 @@ function apiGetProjectLedger(projectId) {
     for (let i = 1; i < pData.length; i++) {
       const r = pData[i];
       if (!r[0]) continue;
-      // 出金は発注IDで紐付けるため、発注IDから関連見積IDを逆引き
       const orderId = String(r[3]).trim();
       const status = String(r[12]).trim();
       if (status === '取消') continue;
@@ -1982,21 +2344,15 @@ function apiGetProjectLedger(projectId) {
       // 工事名でも照合
       const payProject = String(r[6]).trim();
       const payEstHeader = estimate.header || {};
-      const matchByOrder = orderId && orders.some(o => true); // 発注IDがある場合は発注明細と照合
       const matchByProject = payProject && (payProject === (payEstHeader.project || '') || payProject === (payEstHeader.client || ''));
-      
-      // 関連発注IDで照合: 発注IDから関連見積IDを取得
+
+      // 関連発注IDで照合: Map参照で関連見積IDを取得
       let matchByOrderEstId = false;
-      if (orderId && ordSheet) {
-        const oData2 = ordSheet.getDataRange().getDisplayValues();
-        for (let j = 1; j < oData2.length; j++) {
-          if (oData2[j][0] === orderId && (oData2[j][3] === projectId || String(oData2[j][3]).startsWith(projectId + '-'))) {
-            matchByOrderEstId = true;
-            break;
-          }
-        }
+      if (orderId) {
+        const relEstId = orderIdToEstIdMap.get(orderId) || '';
+        matchByOrderEstId = (relEstId === projectId || relEstId.startsWith(projectId + '-'));
       }
-      
+
       if (matchByOrderEstId || matchByProject) {
         paymentEntries.push({ date: r[2], supplier: r[5], type: r[7], amount: amount, fee: fee, remarks: r[11] || '' });
         totalPaymentAmount += amount;
@@ -2032,6 +2388,12 @@ function apiCreateLedgerPdf(jsonData) {
   return JSON.stringify({ success: true, url: file.getUrl() });
 }
 
+/**
+ * 指定IDのデータを全シート(見積・発注・請求書・入金・出金)から削除する。
+ * フロントエンドからの汎用削除APIとして使用。
+ * @param {string} id - 削除対象のレコードID
+ * @returns {string} JSON { success: boolean, message: string }
+ */
 function apiDeleteData(id) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return JSON.stringify({ success: false, message: "Busy" });
@@ -2074,7 +2436,523 @@ function apiBatchInit() {
  * @param {string} userMessage - ユーザーからの質問
  * @return {string} JSON形式の回答 { reply: "...", error: "..." }
  */
-function apiChatWithSystemBot(userMessage) {
+// ==========================================
+// リマインド機能
+// ==========================================
+
+/**
+ * 決済条件テキストから支払期日を算出
+ * @param {string} paymentText - 決済条件テキスト（例: "月末締め翌月末払い"）
+ * @param {Date} baseDate - 起算日
+ * @return {Date|null} 支払期日。パース不可の場合はnull
+ */
+function parsePaymentTerms_(paymentText, baseDate) {
+  if (!paymentText || !baseDate) return null;
+  const text = String(paymentText).replace(/\s+/g, '').trim();
+  if (!text) return null;
+
+  const d = new Date(baseDate);
+  if (isNaN(d.getTime())) return null;
+
+  // 即日 / 現金
+  if (/^(即日|現金|即金|cash)$/i.test(text)) return new Date(d);
+
+  // 受領後○日 / NET○
+  const netMatch = text.match(/(?:受領後|NET|net)(\d+)日?/);
+  if (netMatch) {
+    const result = new Date(d);
+    result.setDate(result.getDate() + parseInt(netMatch[1], 10));
+    return result;
+  }
+
+  // ○日締め翌月○日払い / ○日締め翌々月○日払い
+  const customMatch = text.match(/(\d+)日締め(翌々?月)(\d+)日払/);
+  if (customMatch) {
+    const closeDay = parseInt(customMatch[1], 10);
+    const monthsAhead = customMatch[2] === '翌々月' ? 2 : 1;
+    const payDay = parseInt(customMatch[3], 10);
+    // 締め日を基準に月を進める
+    let closeDate = new Date(d.getFullYear(), d.getMonth(), closeDay);
+    if (d.getDate() > closeDay) closeDate.setMonth(closeDate.getMonth() + 1);
+    const result = new Date(closeDate.getFullYear(), closeDate.getMonth() + monthsAhead, payDay);
+    return result;
+  }
+
+  // 月末締め翌月○日払い
+  const endMonthDayMatch = text.match(/月末締め(翌々?月)(\d+)日払/);
+  if (endMonthDayMatch) {
+    const monthsAhead = endMonthDayMatch[1] === '翌々月' ? 2 : 1;
+    const payDay = parseInt(endMonthDayMatch[2], 10);
+    const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const result = new Date(endOfMonth.getFullYear(), endOfMonth.getMonth() + monthsAhead, payDay);
+    return result;
+  }
+
+  // 月末締め翌月末払い / 月末締め翌々月末払い
+  const endMonthMatch = text.match(/月末締め(翌々?月)末払/);
+  if (endMonthMatch) {
+    const monthsAhead = endMonthMatch[1] === '翌々月' ? 2 : 1;
+    const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const result = new Date(endOfMonth.getFullYear(), endOfMonth.getMonth() + monthsAhead + 1, 0);
+    return result;
+  }
+
+  return null;
+}
+
+/**
+ * リマインド一覧を取得
+ * @return {string} JSON配列
+ */
+function apiGetReminders() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const reminders = [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // --- PDF存在チェック用: ドライブフォルダ内のPDFファイル名を収集 ---
+  let pdfFileNames = [];
+  try {
+    const folder = getSaveFolder();
+    const pdfFiles = folder.getFilesByType(MimeType.PDF);
+    while (pdfFiles.hasNext()) pdfFileNames.push(pdfFiles.next().getName());
+  } catch (e) { /* ignore */ }
+
+  // --- 見積リスト読み込み ---
+  const listSheet = ss.getSheetByName(CONFIG.sheetNames.list);
+  const estimateMap = {}; // id -> { client, project, status, date, payment, totalAmount }
+  if (listSheet && listSheet.getLastRow() > 1) {
+    const listData = listSheet.getDataRange().getValues().slice(1);
+    let currentId = '', currentHeader = null;
+    listData.forEach(row => {
+      const id = String(row[0]);
+      if (id) {
+        currentId = id;
+        currentHeader = {
+          client: String(row[2] || ''),
+          project: String(row[13] || ''),
+          status: String(row[17] || ''),
+          date: row[1],
+          payment: String(row[15] || ''),
+          totalAmount: 0
+        };
+        estimateMap[currentId] = currentHeader;
+      }
+      if (currentId && estimateMap[currentId]) {
+        estimateMap[currentId].totalAmount += Number(row[10]) || 0;
+      }
+    });
+  }
+
+  // --- A. PDF未作成リマインド (見積書) ---
+  Object.keys(estimateMap).forEach(id => {
+    const est = estimateMap[id];
+    const cleanClient = est.client.replace(/[\r\n\t\\/:*?"<>|]/g, '').trim();
+    if (est.status === '見積提出' && cleanClient) {
+      const hasQuotePdf = pdfFileNames.some(fn => fn.includes('御見積書_' + cleanClient));
+      if (!hasQuotePdf) {
+        reminders.push({
+          type: 'pdf_missing', docType: '見積書', id: id,
+          label: est.client + ' / ' + est.project,
+          severity: 'info'
+        });
+      }
+    }
+    // PDF未作成リマインド (請求書)
+    if (est.status === '請求済' && cleanClient) {
+      const hasBillPdf = pdfFileNames.some(fn => fn.includes('御請求書_' + cleanClient));
+      if (!hasBillPdf) {
+        reminders.push({
+          type: 'pdf_missing', docType: '請求書', id: id,
+          label: est.client + ' / ' + est.project,
+          severity: 'info'
+        });
+      }
+    }
+  });
+
+  // --- A. PDF未作成リマインド (発注書) ---
+  const orderSheet = ss.getSheetByName(CONFIG.sheetNames.order);
+  if (orderSheet && orderSheet.getLastRow() > 1) {
+    const oData = orderSheet.getDataRange().getDisplayValues();
+    let hIdx = 0;
+    for (let i = 0; i < Math.min(10, oData.length); i++) { if (oData[i][0] === 'ID') { hIdx = i; break; } }
+    const h = oData[hIdx];
+    const col = {}; h.forEach((v, i) => col[String(v).trim()] = i);
+    const idxVendor = col['発注先'] !== undefined ? col['発注先'] : 2;
+    const idxStatus = col['状態'] !== undefined ? col['状態'] : 12;
+    const idxRelEstId = col['関連見積ID'] !== undefined ? col['関連見積ID'] : 3;
+
+    const seenOrders = new Set();
+    for (let i = hIdx + 1; i < oData.length; i++) {
+      const row = oData[i];
+      const orderId = row[0];
+      if (orderId && !seenOrders.has(orderId)) {
+        seenOrders.add(orderId);
+        const vendor = String(row[idxVendor] || '');
+        const status = String(row[idxStatus] || '');
+        const cleanVendor = vendor.replace(/[\r\n\t\\/:*?"<>|]/g, '').trim();
+        if (status === '発注書作成' && cleanVendor) {
+          const hasPdf = pdfFileNames.some(fn => fn.includes('発注書_' + cleanVendor));
+          if (!hasPdf) {
+            const relEstId = row[idxRelEstId];
+            const est = relEstId ? estimateMap[relEstId] : null;
+            reminders.push({
+              type: 'pdf_missing', docType: '発注書', id: orderId,
+              label: vendor + (est ? ' / ' + est.project : ''),
+              severity: 'info'
+            });
+          }
+        }
+      }
+    }
+  }
+
+  // --- 入金データ集計 (見積ID単位) ---
+  const depositByEstimate = {};
+  const depSheet = ss.getSheetByName(CONFIG.sheetNames.deposits);
+  if (depSheet && depSheet.getLastRow() > 1) {
+    const dData = depSheet.getDataRange().getDisplayValues();
+    for (let i = 1; i < dData.length; i++) {
+      const row = dData[i];
+      if (!row[0]) continue;
+      const estId = String(row[3]).trim();
+      if (!estId) continue;
+      const status = String(row[11]).trim();
+      if (status === '取消') continue;
+      const amount = parseCurrency(row[7]);
+      if (!depositByEstimate[estId]) depositByEstimate[estId] = 0;
+      depositByEstimate[estId] += amount;
+    }
+  }
+
+  // --- B. 入金期日リマインド ---
+  Object.keys(estimateMap).forEach(id => {
+    const est = estimateMap[id];
+    if (est.status !== '請求済') return;
+    if (!est.payment) return;
+    const baseDate = est.date ? new Date(est.date) : null;
+    const dueDate = parsePaymentTerms_(est.payment, baseDate);
+    if (!dueDate) return;
+    dueDate.setHours(0, 0, 0, 0);
+
+    const depositTotal = depositByEstimate[id] || 0;
+    const requiredAmount = Math.floor(est.totalAmount * 1.1);
+    if (depositTotal >= requiredAmount) return; // 入金済み
+
+    const diffDays = Math.round((dueDate - today) / (1000 * 60 * 60 * 24));
+    if (diffDays > 3) return; // まだ余裕あり
+
+    reminders.push({
+      type: diffDays < 0 ? 'deposit_overdue' : 'deposit_due',
+      id: id,
+      label: est.client + ' / ' + est.project,
+      dueDate: formatDate(dueDate),
+      daysLeft: diffDays,
+      severity: diffDays < 0 ? 'danger' : 'warning'
+    });
+  });
+
+  // --- 出金データ集計 (請求書ID単位) ---
+  const paymentByInvoice = {};
+  const paySheet = ss.getSheetByName(CONFIG.sheetNames.payments);
+  if (paySheet && paySheet.getLastRow() > 1) {
+    const pData = paySheet.getDataRange().getDisplayValues();
+    for (let i = 1; i < pData.length; i++) {
+      const row = pData[i];
+      if (!row[0]) continue;
+      const invoiceId = String(row[4]).trim(); // 関連請求書ID
+      if (!invoiceId) continue;
+      const status = String(row[12]).trim();
+      if (status === '取消') continue;
+      const amount = parseCurrency(row[8]);
+      if (!paymentByInvoice[invoiceId]) paymentByInvoice[invoiceId] = 0;
+      paymentByInvoice[invoiceId] += amount;
+    }
+  }
+
+  // --- C. 出金期日リマインド ---
+  const invSheet = ss.getSheetByName(CONFIG.sheetNames.invoice);
+  if (invSheet && invSheet.getLastRow() > 1) {
+    const invData = invSheet.getDataRange().getValues();
+    for (let i = 1; i < invData.length; i++) {
+      const row = invData[i];
+      const invoiceId = String(row[0]);
+      if (!invoiceId) continue;
+      const invStatus = String(row[1] || '');
+      if (invStatus === '取消' || invStatus === '支払済') continue;
+
+      const plannedAmount = parseCurrency(row[10]); // 支払予定額
+      if (plannedAmount <= 0) continue;
+      const paidTotal = paymentByInvoice[invoiceId] || 0;
+      if (paidTotal >= plannedAmount) continue; // 支払済み
+
+      // 決済条件: 関連見積IDから取得
+      const constId = String(row[4] || '');
+      const est = constId ? estimateMap[constId] : null;
+      const paymentTerms = est ? est.payment : '';
+      const invoiceDate = row[7] ? new Date(row[7]) : null;
+
+      let dueDate = null;
+      if (paymentTerms && invoiceDate) {
+        dueDate = parsePaymentTerms_(paymentTerms, invoiceDate);
+      }
+      // フォールバック: 請求日+30日
+      if (!dueDate && invoiceDate && !isNaN(invoiceDate.getTime())) {
+        dueDate = new Date(invoiceDate);
+        dueDate.setDate(dueDate.getDate() + 30);
+      }
+      if (!dueDate) continue;
+      dueDate.setHours(0, 0, 0, 0);
+
+      const diffDays = Math.round((dueDate - today) / (1000 * 60 * 60 * 24));
+      if (diffDays > 3) continue;
+
+      const supplier = String(row[6] || '');
+      const projectName = String(row[5] || '');
+      reminders.push({
+        type: diffDays < 0 ? 'payment_overdue' : 'payment_due',
+        id: invoiceId,
+        label: supplier + ' / ' + projectName,
+        dueDate: formatDate(dueDate),
+        daysLeft: diffDays,
+        severity: diffDays < 0 ? 'danger' : 'warning'
+      });
+    }
+  }
+
+  // severity順にソート: danger > warning > info
+  const severityOrder = { danger: 0, warning: 1, info: 2 };
+  reminders.sort((a, b) => (severityOrder[a.severity] || 9) - (severityOrder[b.severity] || 9));
+
+  return JSON.stringify(reminders);
+}
+
+/**
+ * リマインドメール送信（トリガーから呼び出し）
+ */
+function sendReminderEmail_() {
+  try {
+    const remindersJson = apiGetReminders();
+    const reminders = JSON.parse(remindersJson);
+    const urgent = reminders.filter(r => r.severity === 'danger' || r.severity === 'warning');
+    if (urgent.length === 0) return;
+
+    const typeLabel = {
+      deposit_overdue: '入金期日超過',
+      deposit_due: '入金期日接近',
+      payment_overdue: '出金期日超過',
+      payment_due: '出金期日接近',
+      pdf_missing: 'PDF未作成'
+    };
+
+    let body = 'AI建築見積システム - リマインド通知\n';
+    body += '==========================================\n\n';
+    urgent.forEach(r => {
+      const icon = r.severity === 'danger' ? '[!!]' : '[!]';
+      const type = typeLabel[r.type] || r.type;
+      body += icon + ' ' + type + ': ' + r.label;
+      if (r.dueDate) {
+        body += ' (期日: ' + r.dueDate;
+        if (r.daysLeft < 0) body += ', ' + Math.abs(r.daysLeft) + '日超過';
+        else body += ', あと' + r.daysLeft + '日';
+        body += ')';
+      }
+      body += '\n';
+    });
+    body += '\n--\nAI建築見積システム v10.0';
+
+    // メール送信
+    const email = Session.getActiveUser().getEmail();
+    if (email) {
+      MailApp.sendEmail({
+        to: email,
+        subject: '[リマインド] 未処理項目が ' + urgent.length + ' 件あります',
+        body: body
+      });
+    }
+
+    // LINE送信
+    sendReminderLine_(urgent, typeLabel);
+  } catch (e) {
+    console.error('sendReminderEmail_ failed: ' + e.toString());
+  }
+}
+
+/**
+ * LINE送信先ユーザーIDリストを取得（カンマ区切りで保存）
+ */
+function getLineUserIds_() {
+  const raw = PropertiesService.getScriptProperties().getProperty('LINE_USER_IDS') || CONFIG.LINE_USER_ID || '';
+  return raw.split(',').map(s => s.trim()).filter(s => s.length > 0);
+}
+
+/**
+ * LINE Messaging APIでリマインド通知を送信（multicast対応）
+ */
+function sendReminderLine_(urgentItems, typeLabel) {
+  const token = CONFIG.LINE_TOKEN;
+  const userIds = getLineUserIds_();
+  if (!token || userIds.length === 0) return;
+
+  try {
+    let text = '\u{1F514} リマインド通知\n\n';
+    urgentItems.forEach(r => {
+      const icon = r.severity === 'danger' ? '\u{1F534}' : '\u{1F7E1}';
+      const type = typeLabel[r.type] || r.type;
+      text += icon + ' ' + type + '\n  ' + r.label;
+      if (r.dueDate) {
+        text += '\n  期日: ' + r.dueDate;
+        if (r.daysLeft < 0) text += '(' + Math.abs(r.daysLeft) + '日超過)';
+        else text += '(あと' + r.daysLeft + '日)';
+      }
+      text += '\n\n';
+    });
+
+    if (userIds.length === 1) {
+      UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+        method: 'post', contentType: 'application/json',
+        headers: { 'Authorization': 'Bearer ' + token },
+        payload: JSON.stringify({ to: userIds[0], messages: [{ type: 'text', text: text.trim() }] }),
+        muteHttpExceptions: true
+      });
+    } else {
+      UrlFetchApp.fetch('https://api.line.me/v2/bot/message/multicast', {
+        method: 'post', contentType: 'application/json',
+        headers: { 'Authorization': 'Bearer ' + token },
+        payload: JSON.stringify({ to: userIds, messages: [{ type: 'text', text: text.trim() }] }),
+        muteHttpExceptions: true
+      });
+    }
+  } catch (e) {
+    console.error('sendReminderLine_ failed: ' + e.toString());
+  }
+}
+
+/**
+ * LINE送信先を追加
+ */
+function apiAddLineUser(userId) {
+  if (!userId || !userId.trim()) return JSON.stringify({ success: false, message: 'ユーザーIDが空です' });
+  const props = PropertiesService.getScriptProperties();
+  const existing = getLineUserIds_();
+  const id = userId.trim();
+  if (existing.includes(id)) return JSON.stringify({ success: false, message: 'このユーザーIDは既に登録されています' });
+  existing.push(id);
+  props.setProperty('LINE_USER_IDS', existing.join(','));
+  return JSON.stringify({ success: true, message: '送信先を追加しました' });
+}
+
+/**
+ * LINE送信先を削除
+ */
+function apiRemoveLineUser(userId) {
+  if (!userId) return JSON.stringify({ success: false, message: 'ユーザーIDが空です' });
+  const props = PropertiesService.getScriptProperties();
+  const existing = getLineUserIds_();
+  const filtered = existing.filter(id => id !== userId.trim());
+  props.setProperty('LINE_USER_IDS', filtered.join(','));
+  return JSON.stringify({ success: true, message: '送信先を削除しました' });
+}
+
+/**
+ * LINEトークンの保存
+ */
+function apiSaveLineToken(token) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    props.setProperty('LINE_CHANNEL_TOKEN', token || '');
+    CONFIG.LINE_TOKEN = token || '';
+    return JSON.stringify({ success: true, message: 'トークンを保存しました' });
+  } catch (e) {
+    return JSON.stringify({ success: false, message: e.toString() });
+  }
+}
+
+/**
+ * LINE設定の取得
+ */
+function apiGetLineSettings() {
+  const props = PropertiesService.getScriptProperties();
+  const token = props.getProperty('LINE_CHANNEL_TOKEN') || '';
+  const userIds = getLineUserIds_();
+  return JSON.stringify({
+    hasToken: token.length > 0,
+    tokenPreview: token ? token.substring(0, 8) + '...' : '',
+    userIds: userIds
+  });
+}
+
+/**
+ * LINEテスト送信（全登録ユーザーに送信）
+ */
+function apiTestLineSend() {
+  const token = CONFIG.LINE_TOKEN || PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_TOKEN') || '';
+  const userIds = getLineUserIds_();
+  if (!token) return JSON.stringify({ success: false, message: 'チャネルアクセストークンが未設定です' });
+  if (userIds.length === 0) return JSON.stringify({ success: false, message: '送信先ユーザーIDが未登録です' });
+
+  try {
+    const msg = [{ type: 'text', text: '\u{2705} AI建築見積システム\nLINE通知のテスト送信です。この通知が届いていれば設定は正常です。' }];
+    let res;
+    if (userIds.length === 1) {
+      res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+        method: 'post', contentType: 'application/json',
+        headers: { 'Authorization': 'Bearer ' + token },
+        payload: JSON.stringify({ to: userIds[0], messages: msg }),
+        muteHttpExceptions: true
+      });
+    } else {
+      res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/multicast', {
+        method: 'post', contentType: 'application/json',
+        headers: { 'Authorization': 'Bearer ' + token },
+        payload: JSON.stringify({ to: userIds, messages: msg }),
+        muteHttpExceptions: true
+      });
+    }
+    const code = res.getResponseCode();
+    if (code === 200) return JSON.stringify({ success: true, message: 'テスト送信成功（' + userIds.length + '人）！LINEを確認してください' });
+    const errBody = JSON.parse(res.getContentText());
+    return JSON.stringify({ success: false, message: 'LINE APIエラー (HTTP ' + code + '): ' + (errBody.message || res.getContentText()) });
+  } catch (e) {
+    return JSON.stringify({ success: false, message: 'テスト送信失敗: ' + e.toString() });
+  }
+}
+
+/**
+ * リマインドメール用トリガーをセットアップ（毎朝9時）
+ */
+function setupReminderTrigger() {
+  removeReminderTrigger();
+  ScriptApp.newTrigger('sendReminderEmail_')
+    .timeBased()
+    .everyDays(1)
+    .atHour(9)
+    .create();
+  return JSON.stringify({ success: true, message: 'リマインドトリガーを設定しました（毎朝9時）' });
+}
+
+/**
+ * リマインドメール用トリガーを解除
+ */
+function removeReminderTrigger() {
+  const triggers = ScriptApp.getProjectTriggers();
+  triggers.forEach(t => {
+    if (t.getHandlerFunction() === 'sendReminderEmail_') ScriptApp.deleteTrigger(t);
+  });
+  return JSON.stringify({ success: true, message: 'リマインドトリガーを解除しました' });
+}
+
+/**
+ * リマインドトリガーの状態を取得
+ */
+function apiGetReminderTriggerStatus() {
+  const triggers = ScriptApp.getProjectTriggers();
+  const active = triggers.some(t => t.getHandlerFunction() === 'sendReminderEmail_');
+  return JSON.stringify({ active: active });
+}
+
+function apiChatWithSystemBot(userMessage, screenContext) {
   // APIキーの確認
   if (!CONFIG.API_KEY) {
     return JSON.stringify({ error: "APIキーが設定されていません。管理者に連絡してください。" });
@@ -2092,10 +2970,112 @@ function apiChatWithSystemBot(userMessage) {
     const knowledgeFile = DriveApp.getFileById(knowledgeFileId);
     const systemContext = knowledgeFile.getBlob().getDataAsString();
 
-    // 2. プロンプトの構築
+    // 2. 画面コンテキスト情報の構築
+    let screenSection = '';
+    if (screenContext && screenContext.screenName) {
+      screenSection = `\n【現在の画面】\nユーザーは現在「${screenContext.screenName}」を表示しています。`;
+      if (screenContext.subScreen) {
+        screenSection += `\nサブ画面: ${screenContext.subScreen}`;
+      }
+      if (screenContext.sidePanel) {
+        screenSection += `\nサイドパネル: ${screenContext.sidePanel}を開いています`;
+      }
+      if (screenContext.leftPanel) {
+        screenSection += `\n左パネル: ${screenContext.leftPanel}を開いています`;
+      }
+    }
+
+    // 3. 組み込みシステム機能ドキュメント
+    const builtInDocs = `
+【システム機能一覧（組み込みドキュメント）】
+
+■ メインメニュー
+アプリ起動時に表示される画面。以下のメニューカードから各機能にアクセスできる。
+・見積書作成: 新規見積書の作成。OCR取込、過去データ参照、新規作成が可能
+・発注・原価管理: 発注書の単独作成
+・案件一覧・売上統計: 全案件の進捗確認、売上集計
+・請求書受取: 受取請求書の確認・登録
+・管理者画面: 承認フロー、マスタ管理（管理者のみ表示）
+
+■ リマインド機能
+メニュー画面の上部に「リマインドパネル」が表示される。アプリ起動時に自動で確認が行われる。
+リマインドの種類:
+・PDF未作成（青）: 見積書・発注書・請求書がシステムに登録されているが、PDFがまだ作成されていない場合に通知
+・入金期日接近（黄）: 請求済みの案件で、入金期日まで3日以内の場合に警告
+・入金期日超過（赤）: 請求済みの案件で、入金期日を過ぎても入金が確認されていない場合に警告
+・出金期日接近（黄）: 受取請求書の支払期日まで3日以内の場合に警告
+・出金期日超過（赤）: 受取請求書の支払期日を過ぎても支払が行われていない場合に警告
+入金・出金の期日は、見積書の「決済条件」テキスト（例: 月末締め翌月末払い）から自動計算される。
+決済条件が未入力またはパースできない場合はリマインド対象外になる。
+受取請求書の出金期日は、決済条件が取得できない場合は請求日から30日後がデフォルト。
+メール通知: 管理者がトリガーを設定すると、毎朝9時に期日接近・超過のリマインドメールが自動送信される。
+LINE通知: LINE Messaging APIと連携可能。メールと同時にLINEにもリマインド通知が届く。
+LINE通知の設定手順:
+  1. LINE Developers（https://developers.line.biz/）にログイン
+  2. 「プロバイダー」を作成（会社名など任意の名前でOK）
+  3. プロバイダー内で「Messaging APIチャネル」を新規作成
+  4. チャネル設定画面の「Messaging API設定」タブを開く
+  5. 一番下の「チャネルアクセストークン（長期）」の「発行」ボタンを押してトークンをコピー
+  6. 作成されたLINE公式アカウントを、通知を受け取りたいLINEアカウントで友だち追加する（QRコードがMessaging API設定タブにある）
+  7. ユーザーIDの取得: チャネル基本設定タブの「あなたのユーザーID」を確認。またはWebhookでフォローイベントから取得
+  8. 本システムの管理者画面→「設定」タブ→「LINE通知設定」で、コピーしたトークンとユーザーIDを入力して「保存」
+  9. 「テスト送信」ボタンを押してLINEにメッセージが届くか確認
+注意: リマインドメール通知のトリガーが「無効」の場合、LINE通知も送信されない。必ずトリガーを「有効」にすること。
+
+■ 見積書作成・編集画面
+・ヘッダー情報: 顧客名、工事名、工事場所、工期、決済条件、有効期限を入力
+・明細テーブル: 工種、品名、仕様、数量、単位、原価、単価、金額、備考、発注先を入力
+・左パネル「単価マスタ」: 基本単価マスタや元請別単価マスタから明細に反映
+・左パネル「セットテンプレート」: セットマスタから複数明細を一括追加
+・右パネル「見積履歴」: 過去の見積データを参照して読み込み
+・右パネル「発注先変更」: 明細の発注先を一括変更、発注書作成
+・PDF作成: 保存と同時にPDFを生成。御見積書として顧客名・工事名入りのファイル名で保存
+・請求書発行: 見積データから御請求書PDFを生成。ステータスが「請求済」に変更される
+
+■ 発注・原価管理画面（単独発注）
+・見積書を経由せず、直接発注書を作成できる画面
+・発注先、明細（品名・仕様・数量・単位・単価・金額）を入力
+・PDF作成: 発注書PDFを生成
+・履歴: 過去の発注書を一覧表示、検索、再印刷が可能
+
+■ 案件一覧・売上統計画面
+・見積案件一覧: 全見積案件をリスト表示。売上、発注額、入金状況を確認
+・発注案件一覧: 全発注をリスト表示。支払状況を確認
+・統計カード: 総売上、総発注額、粗利、入金済額などの集計値を表示
+・入金ステータスバッジ: 入金済（緑）、一部入金（黄）で表示
+・工事台帳: 案件ごとの売上・発注・入出金の詳細台帳をPDF出力
+
+■ 請求書受取画面
+・Google Driveの指定フォルダからファイルを取得
+・AIが請求書の内容を自動解析（OCR + Gemini）
+・工事ID紐付け、請求元、請求金額、相殺額、支払予定額を登録
+・登録した請求書は受取請求書リストで管理
+
+■ 管理者画面
+・承認管理: 管理者確認中の見積・発注を承認/却下
+・経営分析: 年度別の月次売上・粗利グラフ、案件ランキング
+・会計連携: 仕訳データのプレビューとCSVダウンロード
+・入金管理: 入金記録の登録・編集・一覧表示
+・出金管理: 出金記録の登録・編集・一覧表示
+・設定: リマインドメール通知のON/OFF切替、LINE通知設定（トークン・ユーザーID入力、テスト送信）
+
+■ AIチャットボット（このシステム解説AI）
+・画面右下の紫色のボタンをクリックして開く
+・現在表示中の画面を自動認識し、その画面に関する質問に的確に回答
+・ドラッグで移動可能
+・操作方法や機能の説明を質問できる
+
+■ データ管理
+・スプレッドシート: 見積リスト、発注リスト、受取請求書リスト、入金リスト、出金リスト、各種マスタ
+・Google Drive: PDFファイルの保存先
+・キャッシュ: データの高速読み込みのため、CacheServiceでキャッシュ管理
+・権限: 管理者と一般ユーザーで表示・操作権限が異なる
+`;
+
+    // 4. プロンプトの構築
     const promptText = `
-あなたは「AI建築見積システム」の操作サポート専門アシスタントです。
-以下の【システム情報】を基に、ユーザーからの質問に答えてください。
+あなたは「AI建築見積システム v10.0」の操作サポート専門アシスタントです。
+以下の【組み込みドキュメント】と【システム情報】の両方を基に、ユーザーからの質問に答えてください。
 
 ■回答ルール
 1. 操作方法の質問には、具体的なボタン名や画面上の場所、手順を簡潔に案内してください
@@ -2106,19 +3086,23 @@ function apiChatWithSystemBot(userMessage) {
    - 手順は「1. 」「2. 」のように番号付き
    - 適度な改行で読みやすく整形
    - シンプルで分かりやすい日本語
+4. ユーザーが「この画面」「ここ」「今の画面」などの指示語を使った場合、【現在の画面】の情報を基に回答してください
 
 ■制約事項
-・【システム情報】に記載されていないことは「わかりません」と答えてください
+・【組み込みドキュメント】と【システム情報】のどちらにも記載されていないことは「わかりません」と答えてください
 ・回答は日本語のみで行ってください
+${screenSection}
 
-【システム情報】
+${builtInDocs}
+
+【システム情報（外部ナレッジ）】
 ${systemContext}
 
 【ユーザーの質問】
 ${userMessage}
 `;
 
-    // 3. Gemini APIへのリクエスト
+    // 4. Gemini APIへのリクエスト
     const payload = {
       contents: [{ parts: [{ text: promptText }] }],
       generationConfig: {
@@ -2146,7 +3130,7 @@ ${userMessage}
     }
     
     // 回答の抽出
-    const reply = json.candidates && json.candidates[0].content.parts[0].text;
+    const reply = json.candidates && json.candidates.length > 0 && json.candidates[0].content.parts[0].text;
     if (!reply) {
       return JSON.stringify({ error: "回答を生成できませんでした。" });
     }
