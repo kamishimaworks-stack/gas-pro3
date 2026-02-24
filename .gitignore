@@ -1,3 +1,9 @@
 # ログ・一時ファイル
 *.log
 .DS_Store
+
+# 依存パッケージ
+node_modules/
+
+# Claude Code
+.claude/

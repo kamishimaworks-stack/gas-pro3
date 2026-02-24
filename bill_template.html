@@ -1,16 +1,18 @@
-<? 
-  var h = data.header || {}; 
-  var id = h.id || ""; 
-  var date = h.date || ""; 
-  var client = h.client || ""; 
-  var project = h.project || ""; 
-  var payment = h.payment || ""; 
-  
-  var subtotalVal = Number(data.totalAmount) || 0; 
-  var taxVal = Math.floor(subtotalVal * 0.1); 
-  var totalVal = subtotalVal + taxVal; 
-  var total = "￥" + totalVal.toLocaleString() + "-"; 
-  
+<?
+  var h = data.header || {};
+  var id = h.id || "";
+  var date = h.date || "";
+  var rawClient = h.client || "";
+  var clientName = rawClient.replace(/\s*(御中|様|殿)\s*$/, "").trim();
+  var project = h.project || "";
+  var payment = h.payment || "";
+
+  var taxMode = h.taxMode || "税別";
+  var subtotalVal = Number(data.totalAmount) || 0;
+  var taxVal = taxMode === "税込" ? 0 : Math.floor(subtotalVal * 0.1);
+  var totalVal = subtotalVal + taxVal;
+  var total = "￥" + totalVal.toLocaleString() + "-";
+
   var pages = data.pages || [data.items];
 ?>
 <!DOCTYPE html>
@@ -68,7 +70,7 @@
     <table class="flex-container">
         <tr>
             <td style="width: 55%;">
-                <div class="customer-name"><?= client ?> 御中</div>
+                <div class="customer-name"><?= clientName ?> 御中</div>
                 <div class="project-name">件名：<?= project ?></div>
                 <div style="margin-top:20px;">
                    下記のとおりご請求申し上げます。<br>

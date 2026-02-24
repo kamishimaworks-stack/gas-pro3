@@ -1,10 +1,15 @@
-<? 
-  var subtotalVal = Number(data.totalAmount) || 0; 
-  var taxVal = Math.floor(subtotalVal * 0.1); 
-  var totalVal = subtotalVal + taxVal; 
-  var subtotal = subtotalVal.toLocaleString(); 
-  var tax = taxVal.toLocaleString(); 
-  var total = "￥" + totalVal.toLocaleString() + "-"; 
+<?
+  var rawVendor = data.header.vendor || "";
+  var vendorName = rawVendor.replace(/\s*(御中|様|殿)\s*$/, "").trim();
+  var honorific = data.header.honorific || " 御中";
+
+  var taxMode = (data.header.taxMode || "税別");
+  var subtotalVal = Number(data.totalAmount) || 0;
+  var taxVal = taxMode === "税込" ? 0 : Math.floor(subtotalVal * 0.1);
+  var totalVal = subtotalVal + taxVal;
+  var subtotal = subtotalVal.toLocaleString();
+  var tax = taxVal.toLocaleString();
+  var total = "￥" + totalVal.toLocaleString() + "-";
 ?>
 <!DOCTYPE html>
 <html>
@@ -58,7 +63,7 @@
   <table class="flex-container">
     <tr>
       <td style="width: 55%;">
-        <div class="customer-name"><?= data.header.vendor ?> 御中</div>
+        <div class="customer-name"><?= vendorName ?><?= honorific ?></div>
         <div style="margin-bottom:10px;">下記案件について発注いたします。</div>
         <table class="condition-table">
             <tr><td class="label">工事名</td><td>： <?= data.header.project || data.header.relEstId || "" ?></td></tr>
@@ -112,6 +117,7 @@
         </tr>
       <? }); ?>
       <? if (p === data.pages.length - 1) { ?>
+        <? if (taxMode !== "税込") { ?>
         <tr class="row-summary">
           <td colspan="4" class="border-none"></td>
           <td class="text-center" style="border:1px solid #333;">小 計</td>
@@ -122,6 +128,7 @@
           <td class="text-center" style="border:1px solid #333;">消費税</td>
           <td class="text-right" style="border:1px solid #333; padding-right:5px;"><?= tax ?></td>
         </tr>
+        <? } ?>
         <tr class="row-summary">
           <td colspan="4" class="border-none"></td>
           <td class="text-center" style="border:1px solid #333;">合 計 <small>(税込)</small></td>

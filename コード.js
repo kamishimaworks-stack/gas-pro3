@@ -25,7 +25,8 @@ const CONFIG = {
     masterClient: '元請別単価マスタ',
     masterSet: '見積セットマスタ',
     masterVendor: '発注先マスタ',
-    journalConfig: '仕訳設定マスタ'
+    journalConfig: '仕訳設定マスタ',
+    masterMaterial: '材料費単価マスタ'
   }
 };
 
@@ -43,6 +44,7 @@ function invalidateDataCache_() {
     c.remove("payments_data");
     c.remove("masters_data");
     c.remove("products_data");
+    c.remove("material_prices");
     const y = new Date().getFullYear();
     for (let i = y - 2; i <= y + 1; i++) c.remove("analysis_" + i);
   } catch (e) { /* ignore */ }
@@ -141,6 +143,190 @@ function getNextSequenceId(type) {
 }
 
 /**
+ * 請求書ファイル連番を採番（イニシャル別に4桁連番）
+ */
+function getNextInvoiceFileNo_(initial) {
+  const props = PropertiesService.getScriptProperties();
+  const key = 'SEQ_INV_FILE_' + (initial || 'X');
+  const lock = LockService.getScriptLock();
+  let lockAcquired = false;
+  try {
+    lockAcquired = lock.tryLock(5000);
+    if (lockAcquired) {
+      let current = Number(props.getProperty(key)) || 0;
+      current++;
+      props.setProperty(key, String(current));
+      return String(current).padStart(4, '0');
+    }
+    return '0000';
+  } finally {
+    if (lockAcquired) lock.releaseLock();
+  }
+}
+
+// 漢字→ローマ字イニシャル変換テーブル（共通）
+const KANJI_ROMAJI_ = {
+  '阿':'A','安':'A','青':'A','赤':'A','秋':'A','朝':'A','浅':'A','荒':'A','有':'A','新':'A','飯':'I','池':'I','石':'I','泉':'I','井':'I','伊':'I','磯':'I','一':'I','稲':'I','今':'I','岩':'I','上':'U','内':'U','宇':'U','梅':'U','浦':'U','遠':'E','江':'E','榎':'E','大':'O','岡':'O','奥':'O','小':'O','尾':'O','荻':'O',
+  '加':'K','柿':'K','角':'K','笠':'K','片':'K','金':'K','鎌':'K','上':'K','亀':'K','川':'K','河':'K','神':'K','菊':'K','岸':'K','北':'K','木':'K','吉':'K','久':'K','国':'K','熊':'K','栗':'K','黒':'K','桑':'K','小':'K','古':'K','後':'G','五':'G',
+  '佐':'S','斉':'S','斎':'S','坂':'S','桜':'S','笹':'S','沢':'S','澤':'S','塩':'S','柴':'S','島':'S','嶋':'S','清':'S','白':'S','新':'S','進':'S','杉':'S','鈴':'S','須':'S','関':'S','瀬':'S',
+  '高':'T','竹':'T','田':'T','谷':'T','丹':'T','千':'T','塚':'T','土':'T','鶴':'T','寺':'T','天':'T','東':'T','徳':'T','富':'T','豊':'T',
+  '中':'N','永':'N','長':'N','西':'N','二':'N','野':'N','能':'N',
+  '橋':'H','畑':'H','浜':'H','濱':'H','林':'H','原':'H','春':'H','樋':'H','久':'H','平':'H','広':'H','廣':'H','福':'F','藤':'F','船':'F','古':'F',
+  '前':'M','牧':'M','松':'M','丸':'M','三':'M','水':'M','溝':'M','南':'M','宮':'M','村':'M','森':'M','諸':'M',
+  '八':'Y','山':'Y','矢':'Y','柳':'Y','横':'Y','吉':'Y','米':'Y',
+  '若':'W','渡':'W','和':'W',
+  '栄':'S','相':'A','足':'A','天':'A','綾':'A','粟':'A',
+  '利':'R','陸':'R','龍':'R','竜':'R',
+  'A':'A','B':'B','C':'C','D':'D','E':'E','F':'F','G':'G','H':'H','I':'I','J':'J','K':'K','L':'L','M':'M','N':'N','O':'O','P':'P','Q':'Q','R':'R','S':'S','T':'T','U':'U','V':'V','W':'W','X':'X','Y':'Y','Z':'Z',
+  'Ａ':'A','Ｂ':'B','Ｃ':'C','Ｄ':'D','Ｅ':'E','Ｆ':'F','Ｇ':'G','Ｈ':'H','Ｉ':'I','Ｊ':'J','Ｋ':'K','Ｌ':'L','Ｍ':'M','Ｎ':'N','Ｏ':'O','Ｐ':'P','Ｑ':'Q','Ｒ':'R','Ｓ':'S','Ｔ':'T','Ｕ':'U','Ｖ':'V','Ｗ':'W','Ｘ':'X','Ｙ':'Y','Ｚ':'Z',
+  'あ':'A','い':'I','う':'U','え':'E','お':'O','か':'K','き':'K','く':'K','け':'K','こ':'K','さ':'S','し':'S','す':'S','せ':'S','そ':'S','た':'T','ち':'T','つ':'T','て':'T','と':'T','な':'N','に':'N','ぬ':'N','ね':'N','の':'N','は':'H','ひ':'H','ふ':'F','へ':'H','ほ':'H','ま':'M','み':'M','む':'M','め':'M','も':'M','や':'Y','ゆ':'Y','よ':'Y','ら':'R','り':'R','る':'R','れ':'R','ろ':'R','わ':'W',
+  'ア':'A','イ':'I','ウ':'U','エ':'E','オ':'O','カ':'K','キ':'K','ク':'K','ケ':'K','コ':'K','サ':'S','シ':'S','ス':'S','セ':'S','ソ':'S','タ':'T','チ':'T','ツ':'T','テ':'T','ト':'T','ナ':'N','ニ':'N','ヌ':'N','ネ':'N','ノ':'N','ハ':'H','ヒ':'H','フ':'F','ヘ':'H','ホ':'H','マ':'M','ミ':'M','ム':'M','メ':'M','モ':'M','ヤ':'Y','ユ':'Y','ヨ':'Y','ラ':'R','リ':'R','ル':'R','レ':'R','ロ':'R','ワ':'W'
+};
+
+/**
+ * 企業名からイニシャルを推定（漢字→ローマ字変換）
+ */
+function guessInitialFromName_(name) {
+  if (!name) return '';
+  const cleaned = name.trim().replace(/^(株式会社|有限会社|合同会社|（株）|\(株\))/, '');
+  const first = cleaned.charAt(0);
+  return KANJI_ROMAJI_[first] || '';
+}
+
+/**
+ * 会計年度を取得（4月始まり：4〜12月→その年、1〜3月→前年）
+ */
+function getFiscalYear_(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (isNaN(d.getTime())) return new Date().getFullYear();
+  const month = d.getMonth() + 1;
+  return month >= 4 ? d.getFullYear() : d.getFullYear() - 1;
+}
+
+/**
+ * 同一年度内で同じ工事名の既存工事番号を検索
+ */
+function lookupConstructionNumber_(projectName, date) {
+  if (!projectName) return '';
+  const fiscalYear = getFiscalYear_(date || new Date());
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.sheetNames.invoice);
+  if (!sheet || sheet.getLastRow() < 2) return '';
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const existingProject = String(row[5]).trim();
+    const existingDate = row[7];
+    const existingConstructionId = String(row[4]).trim();
+    if (existingProject === projectName.trim() &&
+        existingConstructionId &&
+        getFiscalYear_(existingDate) === fiscalYear) {
+      return existingConstructionId;
+    }
+  }
+  return '';
+}
+
+/**
+ * 工事番号を決定（既存再利用 or 新規採番）
+ */
+function resolveConstructionId_(data) {
+  if (data.constructionId) return data.constructionId;
+  const personName = data.person || '';
+  // 同一年度内の同じ工事名から再利用
+  const existing = lookupConstructionNumber_(data.project, data.date || new Date());
+  if (existing) return existing;
+  // イニシャル決定: 明示指定 > 担当者名から推定
+  let initial = '';
+  if (data.initial) {
+    initial = data.initial.toUpperCase().replace(/[^A-Z]/g, '');
+  }
+  if (!initial) {
+    initial = guessInitialFromName_(personName) || getVendorInitial_(personName);
+  }
+  if (!initial) return '';
+  // 新規採番
+  const seqNo = getNextInvoiceFileNo_(initial);
+  return initial + seqNo;
+}
+
+/**
+ * 完了自動処理: 同一工事名・担当者・施工者のレコードを全て「完了」に更新
+ */
+function apiAutoCompleteOnKanryo_(projectName, personName, contractorName) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.sheetNames.invoice);
+  if (!sheet || sheet.getLastRow() < 2) return { updated: 0, ids: [] };
+  const data = sheet.getDataRange().getValues();
+  const updatedIds = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const rowProject = String(row[5]).trim();
+    const rowPerson = String(row[6]).trim();
+    const rowContractor = String(row[14] || '').trim();
+    if (rowProject === projectName.trim() &&
+        rowPerson === personName.trim() &&
+        rowContractor === contractorName.trim() &&
+        String(row[1]) !== '完了') {
+      sheet.getRange(i + 1, 2).setValue('完了');
+      updatedIds.push(String(row[0]));
+    }
+  }
+  if (updatedIds.length > 0) invalidateDataCache_();
+  return { updated: updatedIds.length, ids: updatedIds };
+}
+
+/**
+ * 発注先マスタからイニシャルを取得（未設定なら企業名から推定）
+ */
+function getVendorInitial_(supplierName) {
+  if (!supplierName) return '';
+  // 1. マスタから検索
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const vSheet = ss.getSheetByName(CONFIG.sheetNames.masterVendor);
+    if (vSheet && vSheet.getLastRow() >= 2) {
+      const cols = Math.min(vSheet.getLastColumn(), 5);
+      const data = vSheet.getRange(2, 1, vSheet.getLastRow() - 1, cols).getValues();
+      const target = supplierName.trim();
+      for (const r of data) {
+        const name = String(r[1]).trim();
+        if (name && (target === name || target.startsWith(name) || name.startsWith(target))) {
+          const initial = cols >= 5 && r[4] ? String(r[4]).trim() : '';
+          if (initial) return initial.toUpperCase();
+        }
+      }
+    }
+  } catch (e) { /* ignore */ }
+  // 2. フォールバック: 企業名から推定
+  return guessInitialFromName_(supplierName);
+}
+
+/**
+ * 発注先マスタのE列にローマ字イニシャルを一括入力（未入力のみ）
+ * GASエディタから手動実行: fillVendorInitials()
+ */
+function fillVendorInitials() {
+  const KANJI_ROMAJI = KANJI_ROMAJI_;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.sheetNames.masterVendor);
+  if (!sheet || sheet.getLastRow() < 2) return;
+  // E1にヘッダーがなければ追加
+  if (!sheet.getRange(1, 5).getValue()) sheet.getRange(1, 5).setValue('イニシャル');
+  const lastRow = sheet.getLastRow();
+  const names = sheet.getRange(2, 2, lastRow - 1, 1).getValues();
+  const existing = sheet.getRange(2, 5, lastRow - 1, 1).getValues();
+  const updates = [];
+  for (let i = 0; i < names.length; i++) {
+    if (existing[i][0]) { updates.push([existing[i][0]]); continue; }
+    const name = String(names[i][0]).trim().replace(/^(株式会社|有限会社|合同会社|（株）|\(株\))/, '');
+    const first = name.charAt(0);
+    updates.push([KANJI_ROMAJI[first] || '']);
+  }
+  sheet.getRange(2, 5, updates.length, 1).setValues(updates);
+}
+
+/**
  * 高速削除ヘルパー
  * 連続する行をまとめて削除することでAPIコール数を削減
  */
@@ -198,6 +384,37 @@ function deleteRowsById(sheet, targetId) {
   // 高速削除実行
   deleteRowsOptimized_(sheet, rowsToDelete);
   return true;
+}
+
+// 関連見積IDで発注行を一括削除（自動生成発注の再作成用）
+function deleteOrdersByEstimateId_(sheet, estId) {
+  if (!sheet || !estId) return;
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return;
+
+  // ヘッダー行を探す
+  let hIdx = 0;
+  for (let i = 0; i < Math.min(10, data.length); i++) { if (String(data[i][0]).trim() === 'ID') { hIdx = i; break; } }
+  const headers = data[hIdx];
+  let relEstCol = 3; // デフォルト
+  for (let i = 0; i < headers.length; i++) { if (String(headers[i]).trim() === '関連見積ID') { relEstCol = i; break; } }
+
+  const rowsToDelete = [];
+  let currentId = "";
+  let currentRelEstId = "";
+  for (let i = hIdx + 1; i < data.length; i++) {
+    const rowId = String(data[i][0]).trim();
+    if (rowId) {
+      currentId = rowId;
+      currentRelEstId = String(data[i][relEstCol]).trim();
+    }
+    if (currentRelEstId === estId) {
+      rowsToDelete.push(i + 1);
+    }
+  }
+  if (rowsToDelete.length > 0) {
+    deleteRowsOptimized_(sheet, rowsToDelete);
+  }
 }
 
 function paginateItems(items, rowsPerPage, rowsPerPageSubsequent) {
@@ -280,7 +497,7 @@ function processLineEvent_(event) {
         existing.push(userId);
         PropertiesService.getScriptProperties().setProperty('LINE_USER_IDS', existing.join(','));
       }
-      sendLineReply_(event.replyToken, 'AI建築見積システムと連携しました。\nメッセージを送信すると請求書データとして受け付けます。\n\n【入力フォーマット例】\n請求元: ○○建設\n請求金額: 1000000\n請求日: 2026/02/20\n内容: 外壁塗装工事\n現場名: ○○邸新築工事');
+      sendLineReply_(event.replyToken, 'AI建築見積システムと連携しました。\nメッセージを送信すると工事データとして受け付けます。\n\n【入力フォーマット例】\n工事名、○○邸新築工事\n担当者、○○\n着工日、2026/02/20\n施工者、○○建設\n内容、外壁塗装工事');
     }
     return;
   }
@@ -293,8 +510,8 @@ function processLineEvent_(event) {
     }
 
     const parsed = parseLineMessage_(text);
-    if (!parsed || !parsed.supplier) {
-      sendLineReply_(event.replyToken, '内容を解析できませんでした。\n以下のフォーマットで送信してください:\n\n請求元: ○○建設\n請求金額: 1000000\n請求日: 2026/02/20\n内容: 外壁塗装工事\n現場名: ○○邸新築工事');
+    if (!parsed || !parsed.person) {
+      sendLineReply_(event.replyToken, '内容を解析できませんでした。\n以下のフォーマットで送信してください:\n\n工事名、○○邸新築工事\n担当者、○○\n着工日、2026/02/20\n施工者、○○建設\n内容、外壁塗装工事');
       return;
     }
 
@@ -307,16 +524,33 @@ function processLineEvent_(event) {
 
     const now = new Date();
     const ts = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
-    const fileName = 'LINE_請求書_' + ts + '.txt';
+    const projectName = (parsed.project || '').replace(/[\\/:*?"<>|]/g, '');
+    const personName = (parsed.person || '').replace(/[\\/:*?"<>|]/g, '');
+    const contractorName = (parsed.contractor || '').replace(/[\\/:*?"<>|]/g, '');
+    // 工事番号を自動解決（年度内同一工事名チェック含む）
+    if (!parsed.constructionId) {
+      parsed.constructionId = resolveConstructionId_(parsed);
+    }
+    let fileName;
+    if (parsed.constructionId && projectName && personName) {
+      fileName = parsed.constructionId + '_' + projectName + '\u3000' + personName + '.txt';
+    } else if (projectName && personName) {
+      fileName = projectName + '\u3000' + personName + '.txt';
+    } else {
+      fileName = 'LINE_請求書_' + ts + '.txt';
+    }
 
     // _parseTextInvoice() が読み取れる key: value 形式でファイル内容を生成
     let content = '';
-    if (parsed.supplier) content += '請求元: ' + parsed.supplier + '\n';
-    if (parsed.amount) content += '請求金額: ' + parsed.amount + '\n';
-    if (parsed.date) content += '請求日: ' + parsed.date + '\n';
-    if (parsed.content) content += '内容: ' + parsed.content + '\n';
-    if (parsed.project) content += '現場名: ' + parsed.project + '\n';
     if (parsed.constructionId) content += '工事番号: ' + parsed.constructionId + '\n';
+    if (parsed.person) content += '担当者: ' + parsed.person + '\n';
+    if (parsed.contractor) content += '施工者: ' + parsed.contractor + '\n';
+    if (parsed.project) content += '現場名: ' + parsed.project + '\n';
+    if (parsed.content) content += '内容: ' + parsed.content + '\n';
+    if (parsed.amount) content += '請求金額: ' + parsed.amount + '\n';
+    if (parsed.date) content += '着工日: ' + parsed.date + '\n';
+    if (parsed.location) content += '工事場所: ' + parsed.location + '\n';
+    if (parsed.detectedKanryo) content += '完了\n';
 
     const folder = DriveApp.getFolderById(folderId);
     folder.createFile(fileName, content, MimeType.PLAIN_TEXT);
@@ -327,13 +561,52 @@ function processLineEvent_(event) {
       cache.remove("invoice_files_" + String(folderId).slice(-8));
     } catch (e) { /* ignore */ }
 
-    let reply = '請求書データを受け付けました。\n';
+    let reply = '工事データを受け付けました。\n';
     reply += 'Webアプリの請求書受取画面で確認・登録してください。\n\n';
-    if (parsed.supplier) reply += '請求元: ' + parsed.supplier + '\n';
+    if (parsed.constructionId) reply += '工事番号: ' + parsed.constructionId + '\n';
+    if (parsed.person) reply += '担当者: ' + parsed.person + '\n';
+    if (parsed.contractor) reply += '施工者: ' + parsed.contractor + '\n';
+    if (parsed.project) reply += '工事名: ' + parsed.project + '\n';
+    if (parsed.content) reply += '内容: ' + parsed.content + '\n';
     if (parsed.amount) reply += '金額: ' + Number(parsed.amount).toLocaleString() + '円\n';
-    if (parsed.project) reply += '現場名: ' + parsed.project + '\n';
+    if (parsed.date) reply += '着工日: ' + parsed.date + '\n';
+    if (parsed.location) reply += '工事場所: ' + parsed.location + '\n';
+    if (parsed.detectedKanryo) reply += '※完了通知\n';
 
     sendLineReply_(event.replyToken, reply);
+    return;
+  }
+
+  // 画像・ファイルメッセージ対応
+  if (event.type === 'message' && event.message &&
+      (event.message.type === 'image' || event.message.type === 'file')) {
+    const folderId = CONFIG.invoiceInputFolder;
+    if (!folderId) {
+      sendLineReply_(event.replyToken, '請求書受取フォルダが未設定です。管理者に連絡してください。');
+      return;
+    }
+    const messageId = event.message.id;
+    const res = UrlFetchApp.fetch(
+      'https://api-data.line.me/v2/bot/message/' + messageId + '/content',
+      { method: 'get', headers: { 'Authorization': 'Bearer ' + token } }
+    );
+    const blob = res.getBlob();
+    const now = new Date();
+    const ts = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
+    let fileName;
+    if (event.message.type === 'file' && event.message.fileName) {
+      fileName = 'LINE_請求書_' + ts + '_' + event.message.fileName;
+    } else {
+      const ext = (blob.getContentType() || 'image/jpeg').split('/').pop().replace('jpeg', 'jpg');
+      fileName = 'LINE_請求書_' + ts + '.' + ext;
+    }
+    const folder = DriveApp.getFolderById(folderId);
+    folder.createFile(blob.setName(fileName));
+    // キャッシュ無効化
+    try {
+      CacheService.getScriptCache().remove("invoice_files_" + String(folderId).slice(-8));
+    } catch (e) { /* ignore */ }
+    sendLineReply_(event.replyToken, '請求書画像を受け付けました。\nWebアプリの請求書受取画面で確認・登録してください。');
     return;
   }
 }
@@ -341,7 +614,7 @@ function processLineEvent_(event) {
 function parseLineMessage_(text) {
   // 1. 構造化フォーマット（正規表現）
   const structured = parseStructuredMessage_(text);
-  if (structured && structured.supplier) return structured;
+  if (structured && structured.person) return structured;
 
   // 2. Gemini APIフォールバック
   try {
@@ -355,12 +628,15 @@ function parseLineMessage_(text) {
 function parseStructuredMessage_(text) {
   const result = {};
   const patterns = {
-    supplier:       /(?:請求元|業者名|会社名)[：:\s]*(.+)/,
-    amount:         /(?:金額|請求金額|合計)[：:\s]*([0-9０-９,，]+)/,
-    date:           /(?:日付|請求日|発行日)[：:\s]*(.+)/,
-    content:        /(?:内容|品名|但し書き)[：:\s]*(.+)/,
-    project:        /(?:工事名|現場名|案件名)[：:\s]*(.+)/,
-    constructionId: /(?:工事番号|工事ID)[：:\s]*(.+)/
+    person:         /(?:担当者|担当|請求元|業者名|会社名|企業名)[：:、,\s]*(.+)/,
+    contractor:     /(?:施工者|施工業者|施工担当|作業者)[：:、,\s]*(.+)/,
+    amount:         /(?:金額|請求金額|合計)[：:、,\s]*([0-9０-９,，]+)/,
+    date:           /(?:日付|着工日|請求日|発行日|開始日)[：:、,\s]*(.+)/,
+    content:        /(?:内容|品名|但し書き)[：:、,\s]*(.+)/,
+    project:        /(?:工事名|現場名|案件名)[：:、,\s]*(.+)/,
+    constructionId: /(?:工事番号|工事ID)[：:、,\s]*(.+)/,
+    location:       /(?:工事場所|現場住所|住所|場所)[：:、,\s]*(.+)/,
+    initial:        /(?:イニシャル|頭文字)[：:、,\s]*([A-Za-zＡ-Ｚ]+)/
   };
   const lines = text.split(/\r?\n/);
   lines.forEach(line => {
@@ -376,25 +652,33 @@ function parseStructuredMessage_(text) {
       }
     });
   });
-  return result.supplier ? result : null;
+  // 完了キーワード検出
+  if (text.includes('完了')) {
+    result.detectedKanryo = true;
+  }
+  return result.person ? result : null;
 }
 
 function parseLineMessageWithGemini_(text) {
   if (!CONFIG.API_KEY) return null;
 
-  const prompt = '以下のテキストから請求書に関する情報を抽出してJSON形式で返してください。' +
-    'キー: supplier(請求元・業者名), amount(金額・数値), date(日付・yyyy/MM/dd形式), content(内容・品名), project(工事名・現場名), constructionId(工事番号)。' +
+  const prompt = '以下のテキストから工事に関する情報を抽出してJSON形式で返してください。' +
+    'キー: person(担当者・業者名・企業名), contractor(施工者・施工業者), amount(金額・数値), date(着工日・日付・yyyy/MM/dd形式), content(内容・品名), project(工事名・現場名), constructionId(工事番号), location(工事場所・現場住所), initial(イニシャル・頭文字・アルファベット1-2文字), detectedKanryo(テキストに「完了」が含まれるかboolean)。' +
     '該当しない項目はnullにしてください。\n\nテキスト:\n' + text;
 
   const responseSchema = {
     "type": "OBJECT",
     "properties": {
-      "supplier":       { "type": "STRING" },
+      "person":         { "type": "STRING" },
+      "contractor":     { "type": "STRING" },
       "amount":         { "type": "NUMBER" },
       "date":           { "type": "STRING" },
       "content":        { "type": "STRING" },
       "project":        { "type": "STRING" },
-      "constructionId": { "type": "STRING" }
+      "constructionId": { "type": "STRING" },
+      "location":       { "type": "STRING" },
+      "initial":        { "type": "STRING" },
+      "detectedKanryo": { "type": "BOOLEAN" }
     }
   };
 
@@ -413,7 +697,7 @@ function parseLineMessageWithGemini_(text) {
   const json = JSON.parse(res.getContentText());
   if (json.error || !json.candidates || !json.candidates[0]) return null;
   const parsed = JSON.parse(json.candidates[0].content.parts[0].text);
-  return parsed && parsed.supplier ? parsed : null;
+  return parsed && parsed.person ? parsed : null;
 }
 
 
@@ -475,7 +759,7 @@ function apiGetWebhookUrl() {
 
 function checkAndFixEstimateHeader(sheet) {
   if (!sheet) return;
-  const headers = ["ID", "日付", "顧客名", "工種", "品名", "仕様", "数量", "単位", "原価", "単価", "金額", "備考", "工事場所", "工事名", "工期", "支払条件", "有効期限", "状態", "発注先", "公開範囲"];
+  const headers = ["ID", "日付", "顧客名", "工種", "品名", "仕様", "数量", "単位", "原価", "単価", "金額", "備考", "工事場所", "工事名", "工期", "支払条件", "有効期限", "状態", "発注先", "公開範囲", "税区分"];
   if (sheet.getLastRow() === 0) { sheet.appendRow(headers); }
 }
 
@@ -487,9 +771,15 @@ function checkAndFixOrderHeader(sheet) {
 
 function checkAndFixInvoiceHeader(sheet) {
   if (!sheet) return;
-  const headers = ["ID", "ステータス", "登録日時", "ファイルID", "工事ID", "工事名", "請求元", "請求日", "請求金額", "相殺額", "支払予定額", "内容", "備考", "登録番号"];
+  const headers = ["ID", "ステータス", "登録日時", "ファイルID", "工事ID", "工事名", "担当者", "着工日", "請求金額", "相殺額", "支払予定額", "内容", "備考", "登録番号", "施工者", "工事場所"];
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(headers);
+  } else {
+    // 既存シートのヘッダー行を自動修正
+    const currentHeaders = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+    if (currentHeaders.length < headers.length || String(currentHeaders[6]) !== '担当者') {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    }
   }
 }
 
@@ -557,13 +847,13 @@ function apiGetMasters() {
     sets = [...new Set(sSheet.getRange("A2:A" + sSheet.getLastRow()).getValues().flat().filter(String))]; 
   }
   if (vSheet && vSheet.getLastRow() > 1) {
-    const vData = vSheet.getRange(2, 1, vSheet.getLastRow() - 1, 4).getValues(); 
+    const vData = vSheet.getRange(2, 1, vSheet.getLastRow() - 1, Math.min(vSheet.getLastColumn(), 5)).getValues();
     const map = new Map();
     vData.forEach(r => {
       const name = String(r[1]).trim();
       if (!name) return;
       const display = r[2] ? `${name} ${r[2]}` : name;
-      map.set(display, { name, honorific: r[2]||'', displayName: display, account: r[3]||'' });
+      map.set(display, { name, honorific: r[2]||'', displayName: display, account: r[3]||'', initial: r[4] ? String(r[4]).trim() : '' });
     });
     vendors = Array.from(map.values());
   }
@@ -639,6 +929,132 @@ function apiGetUnifiedProducts() {
     console.warn("Cache put failed (products_data): " + e.message);
   }
   return result;
+}
+
+// -----------------------------------------------------------
+// 材料費単価マスタ
+// -----------------------------------------------------------
+
+function checkAndFixMaterialHeader(sheet) {
+  if (!sheet) return;
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(["品名", "仕様", "単位", "単価", "更新日"]);
+  }
+}
+
+function apiGetMaterialPrices() {
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get("material_prices");
+  if (cached) return cached;
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(CONFIG.sheetNames.masterMaterial);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.sheetNames.masterMaterial);
+    checkAndFixMaterialHeader(sheet);
+  }
+  if (sheet.getLastRow() <= 1) return JSON.stringify([]);
+
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getDisplayValues();
+  const items = data.filter(r => r[0]).map(r => ({
+    product: r[0],
+    spec: r[1] || '',
+    unit: r[2] || '',
+    price: parseCurrency(r[3]),
+    updatedAt: r[4] || ''
+  }));
+
+  const result = JSON.stringify(items);
+  try {
+    cache.put("material_prices", result, CACHE_TTL);
+  } catch (e) {
+    console.warn("Cache put failed (material_prices): " + e.message);
+  }
+  return result;
+}
+
+function apiUpsertMaterialPrices(jsonItems) {
+  const items = JSON.parse(jsonItems);
+  if (!items || !items.length) return JSON.stringify({ success: true, updated: 0, added: 0 });
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(CONFIG.sheetNames.masterMaterial);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.sheetNames.masterMaterial);
+    checkAndFixMaterialHeader(sheet);
+  }
+  if (sheet.getLastRow() === 0) checkAndFixMaterialHeader(sheet);
+
+  const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd HH:mm");
+  let updated = 0, added = 0;
+
+  // 既存データ読込
+  const lastRow = sheet.getLastRow();
+  let existing = [];
+  if (lastRow > 1) {
+    existing = sheet.getRange(2, 1, lastRow - 1, 5).getValues();
+  }
+
+  // キーマップ作成 (品名+仕様 → 行インデックス)
+  const keyMap = new Map();
+  existing.forEach((r, i) => {
+    const key = (String(r[0]).trim() + "\t" + String(r[1]).trim()).toLowerCase();
+    keyMap.set(key, i);
+  });
+
+  const newRows = [];
+  items.forEach(item => {
+    const product = String(item.product || '').trim();
+    if (!product) return;
+    const spec = String(item.spec || '').trim();
+    const unit = String(item.unit || '').trim();
+    const price = Number(item.price) || 0;
+    const key = (product + "\t" + spec).toLowerCase();
+
+    if (keyMap.has(key)) {
+      // 上書き更新
+      const rowIdx = keyMap.get(key);
+      existing[rowIdx] = [product, spec, unit, price, now];
+      updated++;
+    } else {
+      // 新規追加
+      newRows.push([product, spec, unit, price, now]);
+      keyMap.set(key, existing.length + newRows.length - 1);
+      added++;
+    }
+  });
+
+  // 既存行を一括書き戻し
+  if (existing.length > 0) {
+    sheet.getRange(2, 1, existing.length, 5).setValues(existing);
+  }
+  // 新規行を追加
+  if (newRows.length > 0) {
+    sheet.getRange(lastRow + 1, 1, newRows.length, 5).setValues(newRows);
+  }
+
+  invalidateDataCache_();
+  return JSON.stringify({ success: true, updated: updated, added: added });
+}
+
+function apiDeleteMaterialPrice(product, spec) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.sheetNames.masterMaterial);
+  if (!sheet || sheet.getLastRow() <= 1) return JSON.stringify({ success: false, message: "データなし" });
+
+  const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+  const targetProduct = String(product || '').trim().toLowerCase();
+  const targetSpec = String(spec || '').trim().toLowerCase();
+
+  for (let i = data.length - 1; i >= 0; i--) {
+    if (String(data[i][0]).trim().toLowerCase() === targetProduct &&
+        String(data[i][1]).trim().toLowerCase() === targetSpec) {
+      sheet.deleteRow(i + 2);
+      invalidateDataCache_();
+      return JSON.stringify({ success: true });
+    }
+  }
+  return JSON.stringify({ success: false, message: "該当データが見つかりません" });
 }
 
 function apiSearchSets(keyword) {
@@ -820,8 +1236,8 @@ function apiGetProjects() {
         const invSummary = invoiceSummary[currentId] || { totalInvoiced: 0, invoiceCount: 0 };
         const depSummary = depositSummary[currentId] || { totalDeposit: 0, depositCount: 0 };
         projectMap[currentId] = {
-          id: currentId, date: formatDate(row[1]), client: row[2], project: row[13], location: row[12],
-          status: row[17] || "未作成", visibility: row[19] || 'public',
+          id: currentId, date: formatDate(row[1]), updatedAt: row[1] ? new Date(row[1]).getTime() : 0, client: row[2], project: row[13], location: row[12], period: row[14] || '', payment: row[15] || '', expiry: row[16] || '',
+          status: row[17] || "未作成", visibility: row[19] || 'public', taxMode: row[20] || '税別',
           totalAmount: 0, totalOrderAmount: summary.totalCost, orderCount: summary.orderCount,
           totalInvoicedAmount: invSummary.totalInvoiced, invoiceCount: invSummary.invoiceCount,
           totalDeposit: depSummary.totalDeposit, depositCount: depSummary.depositCount
@@ -830,7 +1246,7 @@ function apiGetProjects() {
       projectMap[currentId].totalAmount += Number(row[10]) || 0;
     }
   });
-  const result = JSON.stringify(Object.values(projectMap).sort((a, b) => new Date(b.date) - new Date(a.date)));
+  const result = JSON.stringify(Object.values(projectMap).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)));
   try { cache.put("projects_data", result, CACHE_TTL_SHORT); } catch (e) { console.warn("Cache put failed (projects_data): " + e.message); }
   return result;
 }
@@ -869,7 +1285,7 @@ function apiGetDrafts() {
     if (id) {
       currentId = id;
       if (!draftsMap.has(id)) {
-        draftsMap.set(id, { id: id, date: formatDate(row[1]), timestamp: new Date(row[1] || 0).getTime(), client: row[2], project: row[13], status: row[17], totalAmount: 0 });
+        draftsMap.set(id, { id: id, date: formatDate(row[1]), timestamp: new Date(row[1] || 0).getTime(), client: row[2], project: row[13], location: row[12] || '', period: row[14] || '', payment: row[15] || '', expiry: row[16] || '', status: row[17], taxMode: row[20] || '税別', totalAmount: 0 });
       }
     }
     if (currentId && draftsMap.has(currentId) && String(row[4])) {
@@ -921,7 +1337,7 @@ function _getEstimateData(id) {
     if (rowId !== "") {
       if (rowId === id) {
         isTarget = true;
-        header = { id: rowId, date: formatDate(row[1]), client: row[2], location: row[12], project: row[13], period: row[14], payment: row[15], expiry: row[16], status: row[17], remarks: row[11], visibility: row[19] || 'public' };
+        header = { id: rowId, date: formatDate(row[1]), client: row[2], location: row[12], project: row[13], period: row[14], payment: row[15], expiry: row[16], status: row[17], remarks: row[11], visibility: row[19] || 'public', taxMode: row[20] || '税別' };
       } else { isTarget = false; }
     }
     if (isTarget && String(row[4])) {
@@ -973,26 +1389,70 @@ function apiSaveUnifiedData(jsonData) {
     const estValues = estItems.map((item, i) => {
       const isFirst = (i === 0);
       return [
-        isFirst ? saveId : "", 
-        isFirst ? saveTimestamp : "", 
-        isFirst ? estimateData.header.client : "", 
-        item.category, item.product, item.spec, item.qty, item.unit, item.cost, item.price, item.amount, item.remarks, 
-        isFirst ? estimateData.header.location : "", 
-        isFirst ? estimateData.header.project : "", 
-        isFirst ? estimateData.header.period : "", 
-        isFirst ? estimateData.header.payment : "", 
-        isFirst ? estimateData.header.expiry : "", 
+        isFirst ? saveId : "",
+        isFirst ? saveTimestamp : "",
+        isFirst ? estimateData.header.client : "",
+        item.category, item.product, item.spec, item.qty, item.unit, item.cost, item.price, item.amount, item.remarks,
+        isFirst ? estimateData.header.location : "",
+        isFirst ? estimateData.header.project : "",
+        isFirst ? estimateData.header.period : "",
+        isFirst ? estimateData.header.payment : "",
+        isFirst ? estimateData.header.expiry : "",
         isFirst ? (estimateData.header.status || "見積提出") : "",
         item.vendor,
-        isFirst ? (estimateData.header.visibility || 'public') : ""
+        isFirst ? (estimateData.header.visibility || 'public') : "",
+        isFirst ? (estimateData.header.taxMode || '税別') : ""
       ];
     });
 
-    estSheet.getRange(estSheet.getLastRow() + 1, 1, estValues.length, 20).setValues(estValues.map(r => { while(r.length < 20) r.push(""); return r; }));
+    estSheet.getRange(estSheet.getLastRow() + 1, 1, estValues.length, 21).setValues(estValues.map(r => { while(r.length < 21) r.push(""); return r; }));
 
-    // 改善2: 見積保存時の自動発注生成を廃止
-    // 発注データは apiSaveOrderOnly 経由で明示的に作成する
-    // これにより見積の原価/発注先の変更が既存発注を上書きしなくなる
+    // 見積保存時の自動発注生成: 発注先が記載された明細を発注先ごとにグループ化して保存
+    const vendorGroups = {};
+    estItems.forEach(item => {
+      const v = String(item.vendor || '').trim();
+      if (!v || !String(item.product || '').trim()) return;
+      if (!vendorGroups[v]) vendorGroups[v] = [];
+      vendorGroups[v].push(item);
+    });
+
+    if (Object.keys(vendorGroups).length > 0) {
+      let orderSheet = ss.getSheetByName(CONFIG.sheetNames.order);
+      if (!orderSheet) { orderSheet = ss.insertSheet(CONFIG.sheetNames.order); checkAndFixOrderHeader(orderSheet); }
+
+      // この見積に紐づく既存の自動生成発注を削除
+      deleteOrdersByEstimateId_(orderSheet, saveId);
+
+      const email = Session.getActiveUser().getEmail();
+      Object.keys(vendorGroups).forEach(vendor => {
+        const items = vendorGroups[vendor];
+        const orderId = getNextSequenceId('order');
+        const orderValues = items.map((item, idx) => {
+          const qty = Number(item.qty) || 0;
+          const cost = Number(item.cost) || 0;
+          return [
+            idx === 0 ? orderId : "",
+            saveTimestamp,
+            vendor,
+            saveId,
+            item.category || "",
+            item.product || "",
+            item.spec || "",
+            qty,
+            item.unit || "",
+            cost,
+            Math.round(qty * cost),
+            estimateData.header.location || "",
+            "発注書作成",
+            "",
+            email,
+            "public"
+          ];
+        });
+        const padded = orderValues.map(r => { while (r.length < 16) r.push(""); return r; });
+        orderSheet.getRange(orderSheet.getLastRow() + 1, 1, orderValues.length, 16).setValues(padded);
+      });
+    }
 
     invalidateDataCache_();
     return JSON.stringify({ success: true, id: saveId });
@@ -1203,7 +1663,7 @@ function apiGetOrders() {
         id: currentId, date: row[IDX.date], vendor: row[IDX.vendor], relEstId: row[IDX.relEstId], location: row[IDX.location],
         status: row[IDX.status], remarks: row[IDX.remarks], creator: row[IDX.creator] || '', visibility: row[IDX.visibility] || 'public', totalAmount: 0,
         totalPaid: paySummary.totalPaid, paymentCount: paySummary.paymentCount,
-        hasPdf: false, project: ''
+        hasPdf: false, project: '', client: '', period: '', payment: '', expiry: '', taxMode: ''
       });
     }
     const amount = parseCurrency(row[IDX.amount]);
@@ -1220,7 +1680,7 @@ function apiGetOrders() {
     for (let i = 1; i < estData.length; i++) {
       const eid = String(estData[i][0]);
       if (eid && !estHeaderMap.has(eid)) {
-        estHeaderMap.set(eid, { project: estData[i][13], client: estData[i][2], location: estData[i][12] });
+        estHeaderMap.set(eid, { project: estData[i][13], client: estData[i][2], location: estData[i][12], period: estData[i][14] || '', payment: estData[i][15] || '', expiry: estData[i][16] || '', taxMode: estData[i][20] || '税別' });
       }
     }
   }
@@ -1232,7 +1692,15 @@ function apiGetOrders() {
     // 関連見積IDからプロジェクト名を推定 (Map参照)
     if (order.relEstId) {
       const est = estHeaderMap.get(order.relEstId);
-      if (est) order.project = est.project || '';
+      if (est) {
+        order.project = est.project || '';
+        order.client = est.client || '';
+        order.period = est.period || '';
+        order.payment = est.payment || '';
+        order.expiry = est.expiry || '';
+        order.taxMode = est.taxMode || '';
+        if (!order.location) order.location = est.location || '';
+      }
     }
   });
 
@@ -1279,7 +1747,22 @@ function apiCreateOrderPdf(jsonData, targetVendor) {
   }
 
   const now = new Date();
-  data.header.honorific = " 御中"; 
+  // 発注先マスタから敬称を取得
+  data.header.honorific = " 御中";
+  if (targetVendor) {
+    try {
+      const vSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.sheetNames.masterVendor);
+      if (vSheet && vSheet.getLastRow() > 1) {
+        const vData = vSheet.getRange(2, 1, vSheet.getLastRow() - 1, 3).getValues();
+        for (const r of vData) {
+          if (String(r[1]).trim() === targetVendor.replace(/\s*(御中|様|殿)\s*$/, "").trim()) {
+            data.header.honorific = r[2] ? ` ${r[2]}` : " 御中";
+            break;
+          }
+        }
+      }
+    } catch(e) { /* fallback to 御中 */ }
+  }
   data.header.date = getJapaneseDateStr(now);
   data.totalAmount = data.items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
   data.pages = paginateItems(data.items, 22, 35);
@@ -1378,7 +1861,8 @@ function apiGetOrderDetails(orderId) {
       qty: parseCurrency(row[col['数量']]) || 0,
       unit: row[col['単位']] || '',
       cost: parseCurrency(row[col['単価']]) || 0,
-      amount: parseCurrency(row[col['金額']]) || 0
+      amount: parseCurrency(row[col['金額']]) || 0,
+      vendor: row[col['発注先']] || ''
     });
   }
   if (!header) return JSON.stringify({ error: "指定された発注が見つかりません" });
@@ -1525,14 +2009,17 @@ function _parseTextInvoice(file) {
     if (!content.match(/工事|現場|請求|金額|日付|業者/)) { content = file.getBlob().getDataAsString('Shift_JIS'); }
   } catch(e) {}
   const lines = content.split(/\r\n|\n/);
-  const result = { constructionId: "", project: "", supplier: "", amount: 0, content: "", date: "" };
+  const result = { constructionId: "", project: "", person: "", contractor: "", amount: 0, content: "", date: "", location: "", initial: "", detectedKanryo: false };
   const keyMap = [
     { key: "constructionId", keywords: ["工事番号", "工事ID", "No"] },
     { key: "project", keywords: ["現場名", "工事名", "案件名", "件名"] },
-    { key: "supplier", keywords: ["請求業者", "業者名", "請求元", "会社名"] },
+    { key: "person", keywords: ["担当者", "担当", "請求業者", "業者名", "請求元", "会社名", "企業名"] },
+    { key: "contractor", keywords: ["施工者", "施工業者", "施工担当", "作業者"] },
     { key: "amount", keywords: ["金額", "請求金額", "合計", "税込金額"] },
     { key: "content", keywords: ["内容", "但し書き", "品名", "詳細"] },
-    { key: "date", keywords: ["日付", "請求日", "発行日"] }
+    { key: "date", keywords: ["日付", "着工日", "請求日", "発行日", "開始日"] },
+    { key: "location", keywords: ["工事場所", "現場住所", "住所", "場所"] },
+    { key: "initial", keywords: ["イニシャル", "頭文字"] }
   ];
   lines.forEach(line => {
     const l = line.trim(); if (!l) return;
@@ -1543,7 +2030,7 @@ function _parseTextInvoice(file) {
         const matchBracket = l.match(regexBracket);
         if (matchBracket) value = matchBracket[1].trim();
         if (!value) {
-           const regexColon = new RegExp(`^${keyword}\\s*[:：]\\s*(.*)$`);
+           const regexColon = new RegExp(`^${keyword}\\s*[:：、,]\\s*(.*)$`);
            const matchColon = l.match(regexColon);
            if (matchColon) value = matchColon[1].trim();
         }
@@ -1553,6 +2040,10 @@ function _parseTextInvoice(file) {
       });
     });
   });
+  // 完了キーワード検出
+  if (content.includes('完了')) {
+    result.detectedKanryo = true;
+  }
   return result;
 }
 
@@ -1562,13 +2053,16 @@ function _parseInvoiceImageWithGemini(file) {
   const projects = JSON.parse(projectsJson).map(p => `${p.id}: ${p.name}`).join("\n");
   const mime = file.getMimeType();
   const base64 = Utilities.base64Encode(file.getBlob().getBytes());
-  const prompt = `あなたは建築積算のプロです。画像から情報を抽出してください。\n【重要】以下のリストを参照し、最も関連性が高い「工事番号(constructionId)」を推測してください。\nリスト: ${projects}\n抽出項目: constructionId, supplier, date(yyyy/MM/dd), amount(税込), content, registrationNumber(Tから始まる13桁の番号)`;
+  const prompt = `あなたは建築積算のプロです。画像から情報を抽出してください。\n【重要】以下のリストを参照し、最も関連性が高い「工事番号(constructionId)」を推測してください。\nリスト: ${projects}\n抽出項目: constructionId, person(担当者/請求元), contractor(施工者/施工業者), date(着工日/開始日, yyyy/MM/dd), amount(税込), content, registrationNumber(Tから始まる13桁の番号), location(工事場所), initial(担当者のイニシャル/頭文字, A-Zの1文字), detectedKanryo(文書に「完了」という文言があればtrue)`;
   const parts = [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }];
   const responseSchema = {
     "type": "OBJECT",
     "properties": {
-      "constructionId": { "type": "STRING" }, "supplier": { "type": "STRING" }, "date": { "type": "STRING" },
-      "amount": { "type": "NUMBER" }, "content": { "type": "STRING" }, "registrationNumber": { "type": "STRING", "description": "T+13 digits" }
+      "constructionId": { "type": "STRING" }, "person": { "type": "STRING" }, "contractor": { "type": "STRING" },
+      "date": { "type": "STRING" }, "amount": { "type": "NUMBER" }, "content": { "type": "STRING" },
+      "registrationNumber": { "type": "STRING", "description": "T+13 digits" },
+      "location": { "type": "STRING" }, "initial": { "type": "STRING" },
+      "detectedKanryo": { "type": "BOOLEAN" }
     }
   };
   const res = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${CONFIG.API_KEY}`, {
@@ -1580,6 +2074,37 @@ function _parseInvoiceImageWithGemini(file) {
   if (json.error) throw new Error("Gemini API Error: " + json.error.message);
   if (!json.candidates || !json.candidates[0]) throw new Error("AIから回答を取得できませんでした");
   return JSON.parse(json.candidates[0].content.parts[0].text);
+}
+
+// ── 請求書OCR (ブラウザアップロード) ──────────────────
+function apiParseInvoiceFromBase64(base64Data, mimeType) {
+  try {
+    if (!base64Data || !mimeType) return JSON.stringify({ error: "データが不足しています" });
+    if (!CONFIG.API_KEY) return JSON.stringify({ error: "APIキーが未設定です" });
+    const projectsJson = apiGetActiveProjectsList();
+    const projects = JSON.parse(projectsJson).map(p => `${p.id}: ${p.name}`).join("\n");
+    const prompt = `あなたは建築積算のプロです。画像から情報を抽出してください。\n【重要】以下のリストを参照し、最も関連性が高い「工事番号(constructionId)」を推測してください。\nリスト: ${projects}\n抽出項目: constructionId, person(担当者/請求元), contractor(施工者/施工業者), date(着工日/開始日, yyyy/MM/dd), amount(税込), content, registrationNumber(Tから始まる13桁の番号), location(工事場所), initial(担当者のイニシャル/頭文字, A-Zの1文字), detectedKanryo(文書に「完了」という文言があればtrue)`;
+    const parts = [{ text: prompt }, { inline_data: { mime_type: mimeType, data: base64Data } }];
+    const responseSchema = {
+      "type": "OBJECT",
+      "properties": {
+        "constructionId": { "type": "STRING" }, "person": { "type": "STRING" }, "contractor": { "type": "STRING" },
+        "date": { "type": "STRING" }, "amount": { "type": "NUMBER" }, "content": { "type": "STRING" },
+        "registrationNumber": { "type": "STRING", "description": "T+13 digits" },
+        "location": { "type": "STRING" }, "initial": { "type": "STRING" },
+        "detectedKanryo": { "type": "BOOLEAN" }
+      }
+    };
+    const res = UrlFetchApp.fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${CONFIG.API_KEY}`, {
+      method: "post", contentType: "application/json",
+      payload: JSON.stringify({ contents: [{ parts }], generationConfig: { response_mime_type: "application/json", response_schema: responseSchema } }),
+      muteHttpExceptions: true
+    });
+    const json = JSON.parse(res.getContentText());
+    if (json.error) throw new Error("Gemini API Error: " + json.error.message);
+    if (!json.candidates || !json.candidates[0]) throw new Error("AIから回答を取得できませんでした");
+    return JSON.stringify(JSON.parse(json.candidates[0].content.parts[0].text));
+  } catch (e) { return JSON.stringify({ error: e.toString() }); }
 }
 
 // ── 見積OCR機能 ──────────────────────────────────
@@ -1690,10 +2215,13 @@ function apiSaveInvoice(jsonData) {
     } else {
         id = "INV-" + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "MMddHHmmss");
     }
-    const rowValues = [ 
-        id, data.status || "未確認", now, data.fileId || "", data.constructionId || "", 
-        data.project || "", data.supplier || "", data.date || "", data.amount || 0, 
-        data.offset || 0, payment, data.content || "", data.remarks || "", data.registrationNumber || ""
+    // 工事番号の自動解決
+    const constructionId = resolveConstructionId_(data);
+    const rowValues = [
+        id, data.status || "着工", now, data.fileId || "", constructionId,
+        data.project || "", data.person || "", data.date || "", data.amount || 0,
+        data.offset || 0, payment, data.content || "", data.remarks || "", data.registrationNumber || "",
+        data.contractor || "", data.location || ""
     ];
     if (rowIndex > 0) {
         // 既存レコードの更新時はステータスを維持する (ユーザーが手動変更した値を上書きしないため)
@@ -1703,8 +2231,13 @@ function apiSaveInvoice(jsonData) {
     } else {
         sheet.appendRow(rowValues);
     }
+    // 完了自動処理
+    let autoCompleteResult = null;
+    if (data.detectedKanryo && data.project && data.person) {
+      autoCompleteResult = apiAutoCompleteOnKanryo_(data.project, data.person, data.contractor || '');
+    }
     invalidateDataCache_();
-    return JSON.stringify({ success: true });
+    return JSON.stringify({ success: true, constructionId: constructionId, autoComplete: autoCompleteResult });
   } catch(e) { return JSON.stringify({ success: false, message: e.toString() }); } finally { lock.releaseLock(); }
 }
 
@@ -1719,10 +2252,11 @@ function apiGetInvoices() {
     const row = data[i];
     if (row[0]) {
       invoices.push({
-        id: row[0], status: row[1], registeredAt: row[2], fileId: row[3], constructionId: row[4], 
-        project: row[5], supplier: row[6], date: row[7],
-        amount: parseCurrency(row[8]), offset: parseCurrency(row[9]), payment: parseCurrency(row[10]), 
-        content: row[11], remarks: row[12], registrationNumber: row[13] || ""
+        id: row[0], status: row[1], registeredAt: row[2], fileId: row[3], constructionId: row[4],
+        project: row[5], person: row[6], date: row[7],
+        amount: parseCurrency(row[8]), offset: parseCurrency(row[9]), payment: parseCurrency(row[10]),
+        content: row[11], remarks: row[12], registrationNumber: row[13] || "",
+        contractor: row[14] || "", location: row[15] || ""
       });
     }
   }
@@ -1741,13 +2275,13 @@ function apiUpdateInvoiceStatus(id, newStatus) {
   return JSON.stringify({ success: found });
 }
 
-function apiGetOrderBalance(constructionId, supplierName) {
+function apiGetOrderBalance(constructionId, personName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const oSheet = ss.getSheetByName(CONFIG.sheetNames.order);
   const iSheet = ss.getSheetByName(CONFIG.sheetNames.invoice);
   if (!oSheet) return JSON.stringify({ error: "発注シートがありません" });
-  if (!supplierName) return JSON.stringify({ totalOrder: 0, totalPaid: 0, balance: 0 });
-  const normSupplier = supplierName.replace(/[\s\u3000]/g, "");
+  if (!personName) return JSON.stringify({ totalOrder: 0, totalPaid: 0, balance: 0 });
+  const normSupplier = personName.replace(/[\s\u3000]/g, "");
   const oData = oSheet.getDataRange().getDisplayValues();
   let totalOrder = 0;
   for (let i = 1; i < oData.length; i++) {
@@ -2042,7 +2576,7 @@ function apiPreviewJournalData(year, month, includeSales, includePurchases) {
         const iData = iSheet.getDataRange().getValues();
         for (let i = 1; i < iData.length; i++) {
             const row = iData[i];
-            if (row[1] !== '確認済' && row[1] !== '支払済') continue;
+            if (row[1] !== '着工' && row[1] !== '完了') continue;
             let dStr = row[7] || row[2];
             const date = new Date(dStr);
             if (isNaN(date.getTime()) || date.getFullYear() != year || (date.getMonth() + 1) != month) continue;
@@ -2680,7 +3214,7 @@ function apiGetReminders() {
       const invoiceId = String(row[0]);
       if (!invoiceId) continue;
       const invStatus = String(row[1] || '');
-      if (invStatus === '取消' || invStatus === '支払済') continue;
+      if (invStatus === '取消' || invStatus === '完了') continue;
 
       const plannedAmount = parseCurrency(row[10]); // 支払予定額
       if (plannedAmount <= 0) continue;
@@ -3141,4 +3675,362 @@ ${userMessage}
     console.error("apiChatWithSystemBot Exception: " + e.toString());
     return JSON.stringify({ error: "システムエラーが発生しました: " + e.toString() });
   }
+}
+
+// ── AI操作アシスタント ──────────────────
+
+function buildAssistantPrompt_(userInstruction, ctx) {
+  const header = ctx.header || {};
+  const items = (ctx.items || []).map((it, i) =>
+    `${i}: cat=${it.category||''} prod=${it.product||''} spec=${it.spec||''} qty=${it.qty||0} unit=${it.unit||''} price=${it.price||0} cost=${it.cost||0} vendor=${it.vendor||''}`
+  ).join('\n');
+
+  return `あなたは建築見積システムの操作アシスタントです。
+ユーザーの自然言語の指示を解析し、見積データを操作するためのJSONアクションを生成してください。
+
+【現在の見積データ】
+顧客: ${header.client || ''} / 工事名: ${header.project || ''} / 現場: ${header.location || ''}
+明細(${(ctx.items||[]).length}件):
+${items}
+
+【アクションタイプ】
+- update_item: 明細行のフィールドを更新。filterで対象を絞り、changesで値を設定、またはmodifierで計算。
+- update_header: ヘッダー(client,project,location,period,payment,expiry)を更新。
+- add_item: 新しい明細行を追加。newItemにcategory,product,spec,qty,unit,price,cost,vendorを指定。
+- remove_item: 明細行を削除。filterで対象を絞り込む。
+
+【filterの仕様】
+- operator: "all"(全件), "equals"(完全一致), "contains"(部分一致)
+- field: "category","product","vendor","spec" のいずれか
+- value: 比較する値
+
+【changesの仕様】
+変更可能フィールド: vendor, category, product, spec, qty, unit, price, cost, remarks
+
+【modifierの仕様】
+- field: "price","qty","cost"
+- operation: "multiply"(乗算), "add"(加算), "set"(直接設定)
+- value: 数値
+
+【ユーザーの指示】
+${userInstruction}
+
+注意:
+- confidenceは0〜1で、指示が曖昧な場合は低い値を返してください
+- summaryは日本語で変更内容を簡潔に説明してください
+- 指示が見積操作と無関係な場合はactions空配列でsummaryに説明を入れてください`;
+}
+
+function apiAiAssistantAction(userInstruction, estimateContextJson) {
+  try {
+    if (!CONFIG.API_KEY) return JSON.stringify({ error: "APIキーが未設定です" });
+    if (!userInstruction) return JSON.stringify({ error: "指示を入力してください" });
+
+    const ctx = JSON.parse(estimateContextJson || '{}');
+    const prompt = buildAssistantPrompt_(userInstruction, ctx);
+
+    const responseSchema = {
+      "type": "OBJECT",
+      "properties": {
+        "actions": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "type": { "type": "STRING", "description": "update_item|update_header|add_item|remove_item" },
+              "filter": {
+                "type": "OBJECT",
+                "properties": {
+                  "field": { "type": "STRING" },
+                  "operator": { "type": "STRING", "description": "all|equals|contains" },
+                  "value": { "type": "STRING" }
+                }
+              },
+              "changes": {
+                "type": "OBJECT",
+                "properties": {
+                  "vendor": { "type": "STRING" }, "category": { "type": "STRING" },
+                  "product": { "type": "STRING" }, "spec": { "type": "STRING" },
+                  "qty": { "type": "NUMBER" }, "unit": { "type": "STRING" },
+                  "price": { "type": "NUMBER" }, "cost": { "type": "NUMBER" },
+                  "remarks": { "type": "STRING" }
+                }
+              },
+              "modifier": {
+                "type": "OBJECT",
+                "properties": {
+                  "field": { "type": "STRING" }, "operation": { "type": "STRING" }, "value": { "type": "NUMBER" }
+                }
+              },
+              "newItem": {
+                "type": "OBJECT",
+                "properties": {
+                  "category": { "type": "STRING" }, "product": { "type": "STRING" },
+                  "spec": { "type": "STRING" }, "qty": { "type": "NUMBER" },
+                  "unit": { "type": "STRING" }, "price": { "type": "NUMBER" },
+                  "cost": { "type": "NUMBER" }, "vendor": { "type": "STRING" }
+                }
+              }
+            }
+          }
+        },
+        "summary": { "type": "STRING" },
+        "confidence": { "type": "NUMBER" }
+      }
+    };
+
+    const res = UrlFetchApp.fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${CONFIG.API_KEY}`,
+      {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            response_mime_type: "application/json",
+            response_schema: responseSchema,
+            temperature: 0.1
+          }
+        }),
+        muteHttpExceptions: true
+      }
+    );
+
+    const json = JSON.parse(res.getContentText());
+    if (json.error) {
+      console.error("AI Assistant Gemini Error: " + JSON.stringify(json.error));
+      return JSON.stringify({ error: "AIの応答エラー: " + json.error.message });
+    }
+    if (!json.candidates || !json.candidates[0]) {
+      return JSON.stringify({ error: "AIから回答を取得できませんでした" });
+    }
+
+    return json.candidates[0].content.parts[0].text;
+
+  } catch (e) {
+    console.error("apiAiAssistantAction Exception: " + e.toString());
+    return JSON.stringify({ error: "システムエラー: " + e.toString() });
+  }
+}
+
+// ── 統合AIアシスタント（全画面対応） ──────────────────
+
+function apiAiAssistantUnified(userInstruction, contextJson) {
+  try {
+    if (!CONFIG.API_KEY) return JSON.stringify({ error: "APIキーが未設定です" });
+    if (!userInstruction) return JSON.stringify({ error: "指示を入力してください" });
+
+    var ctx = JSON.parse(contextJson || '{}');
+    var prompt = buildUnifiedPrompt_(userInstruction, ctx);
+    var schema = buildUnifiedResponseSchema_(ctx.screen);
+
+    var res = UrlFetchApp.fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + CONFIG.API_KEY,
+      {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            response_mime_type: "application/json",
+            response_schema: schema,
+            temperature: 0.1
+          }
+        }),
+        muteHttpExceptions: true
+      }
+    );
+
+    var json = JSON.parse(res.getContentText());
+    if (json.error) {
+      console.error("AI Unified Gemini Error: " + JSON.stringify(json.error));
+      return JSON.stringify({ error: "AIの応答エラー: " + json.error.message });
+    }
+    if (!json.candidates || !json.candidates[0]) {
+      return JSON.stringify({ error: "AIから回答を取得できませんでした" });
+    }
+
+    var aiResult = JSON.parse(json.candidates[0].content.parts[0].text);
+
+    // queryタイプの場合はデータ取得して要約
+    if (aiResult.responseType === 'query') {
+      try {
+        var queryData = executeAiQuery_(aiResult.queryType, aiResult.queryParams || {});
+        var summary = summarizeQueryResult_(userInstruction, queryData, aiResult.queryType);
+        aiResult.queryResult = summary;
+      } catch (qe) {
+        console.error("Query execution error: " + qe.toString());
+        aiResult.queryResult = "データ取得中にエラーが発生しました: " + qe.toString();
+      }
+    }
+
+    return JSON.stringify(aiResult);
+
+  } catch (e) {
+    console.error("apiAiAssistantUnified Exception: " + e.toString());
+    return JSON.stringify({ error: "システムエラー: " + e.toString() });
+  }
+}
+
+function buildUnifiedPrompt_(userInstruction, ctx) {
+  var screen = ctx.screen || 'menu';
+  var formData = ctx.formData || {};
+  var summaryData = ctx.summaryData || {};
+  var history = ctx.history || [];
+
+  var screenLabel = { menu: 'ホーム', list: '一覧/統計', edit: '見積編集', admin: '管理', invoice: '請求書受取', dedicated_order: '発注書作成' }[screen] || screen;
+
+  // 画面固有のデータコンテキスト
+  var dataContext = '';
+  if (screen === 'edit' && formData.header) {
+    var header = formData.header;
+    var items = (formData.items || []).map(function(it, i) {
+      return i + ': cat=' + (it.category||'') + ' prod=' + (it.product||'') + ' spec=' + (it.spec||'') + ' qty=' + (it.qty||0) + ' unit=' + (it.unit||'') + ' price=' + (it.price||0) + ' cost=' + (it.cost||0) + ' vendor=' + (it.vendor||'');
+    }).join('\n');
+    dataContext = '\n【現在の見積データ】\n顧客: ' + (header.client||'') + ' / 工事名: ' + (header.project||'') + ' / 現場: ' + (header.location||'') + '\n明細(' + (formData.items||[]).length + '件):\n' + items;
+  } else if (screen === 'dedicated_order' && formData.header) {
+    var oh = formData.header;
+    var oItems = (formData.items || []).map(function(it, i) {
+      return i + ': prod=' + (it.product||'') + ' spec=' + (it.spec||'') + ' vendor=' + (it.vendor||'') + ' estQty=' + (it.estQty||0) + ' estPrice=' + (it.estPrice||0) + ' exeQty=' + (it.exeQty||0) + ' exePrice=' + (it.exePrice||0);
+    }).join('\n');
+    dataContext = '\n【現在の発注データ】\n発注先: ' + (oh.vendor||'') + ' / 工事名: ' + (oh.project||'') + ' / 現場: ' + (oh.location||'') + '\n明細(' + (formData.items||[]).length + '件):\n' + oItems;
+  } else if (screen === 'invoice' && formData.constructionId !== undefined) {
+    dataContext = '\n【現在の請求書データ】\n工事ID: ' + (formData.constructionId||'') + ' / 工事名: ' + (formData.project||'') + ' / 日付: ' + (formData.date||'') + ' / 担当: ' + (formData.person||'') + ' / 業者: ' + (formData.contractor||'') + ' / 金額: ' + (formData.amount||0) + ' / 相殺: ' + (formData.offset||0) + ' / 内容: ' + (formData.content||'') + ' / 現場: ' + (formData.location||'') + ' / ステータス: ' + (formData.status||'');
+  } else if (screen === 'list') {
+    dataContext = '\n【現在の一覧画面】\nサブタブ: ' + (summaryData.subTab||'projects') + ' / 表示件数: ' + (summaryData.count||0) + '件';
+  } else if (screen === 'admin') {
+    dataContext = '\n【現在の管理画面】\nサブタブ: ' + (summaryData.subTab||'');
+  } else if (screen === 'menu') {
+    dataContext = '\n【ホーム画面】\nリマインダー: ' + (summaryData.reminderCount||0) + '件';
+  }
+
+  // 画面固有のアクション定義
+  var actionDefs = '\n【共通アクション（全画面）】\n- navigate: 画面遷移。target に遷移先 (menu/list/edit/admin/invoice/dedicated_order) を指定。targetId で特定のデータを開く。targetSubTab でサブタブ指定。\n- query: データ検索。queryType (projects/orders/invoices/analysis/deposits/payments) と queryParams (year, vendor, status 等) を指定。';
+
+  if (screen === 'edit') {
+    actionDefs += '\n【見積操作アクション】\n- update_item: 明細行のフィールドを更新。filterで対象を絞り、changesで値を設定、modifierで計算。\n- update_header: ヘッダー(client,project,location,period,payment,expiry)を更新。\n- add_item: 新しい明細行を追加。newItemにcategory,product,spec,qty,unit,price,cost,vendorを指定。\n- remove_item: 明細行を削除。filterで対象を絞り込む。';
+  } else if (screen === 'dedicated_order') {
+    actionDefs += '\n【発注操作アクション】\n- update_order_item: 発注明細行のフィールドを更新。filterで対象を絞り、changesでproduct,spec,vendor,estQty,estUnit,estPrice,exeQty,exeUnit,exePriceを設定、modifierで計算。\n- update_order_header: 発注ヘッダー(vendor,project,location,period,payment,expiry,date)を更新。\n- add_order_item: 新しい発注明細行を追加。\n- remove_order_item: 発注明細行を削除。';
+  } else if (screen === 'invoice') {
+    actionDefs += '\n【請求書操作アクション】\n- update_invoice: 請求書フォームのフィールドを更新。changesにconstructionId,project,date,person,contractor,amount,offset,content,location,statusを指定。';
+  }
+
+  // 会話履歴コンテキスト
+  var historyContext = '';
+  if (history.length > 0) {
+    historyContext = '\n【直近の会話】\n' + history.map(function(h) {
+      return (h.role === 'user' ? 'ユーザー: ' : 'AI: ') + h.text;
+    }).join('\n');
+  }
+
+  return 'あなたは建築見積システムの操作アシスタントです。\nユーザーの自然言語の指示を解析し、適切なレスポンスタイプ(navigate/query/action)を判別してJSONを生成してください。\n\n【現在の画面】' + screenLabel + ' (' + screen + ')' + dataContext + actionDefs + '\n\n【filterの仕様】\n- operator: "all"(全件), "equals"(完全一致), "contains"(部分一致)\n- field: 検索対象のフィールド名\n- value: 比較する値\n\n【modifierの仕様（数値変更用）】\n- field: 対象フィールド\n- operation: "multiply"(乗算), "add"(加算), "set"(直接設定)\n- value: 数値\n\n【queryTypeの仕様】\n- projects: 見積一覧。queryParamsにyear,status,clientでフィルタ可。\n- orders: 発注一覧。queryParamsにvendor,statusでフィルタ可。\n- invoices: 請求書一覧。queryParamsにstatus,contractorでフィルタ可。\n- analysis: 分析データ。queryParamsにyearを指定。\n- deposits: 入金一覧。\n- payments: 出金一覧。' + historyContext + '\n\n【ユーザーの指示】\n' + userInstruction + '\n\n注意:\n- responseTypeは navigate / query / action のいずれかを必ず指定\n- confidenceは0〜1で、指示が曖昧な場合は低い値を返してください\n- summaryは日本語で内容を簡潔に説明してください\n- 画面遷移の指示にはnavigate、データに関する質問にはquery、フォーム操作にはactionを使用\n- 現在の画面で使えないアクションは生成しないでください\n- 指示が操作と無関係な場合はactions空配列でsummaryに説明を入れてください';
+}
+
+function buildUnifiedResponseSchema_(screen) {
+  var actionProperties = {
+    "type": { "type": "STRING", "description": "navigate|update_item|update_header|add_item|remove_item|update_order_item|update_order_header|add_order_item|remove_order_item|update_invoice" },
+    "target": { "type": "STRING", "description": "navigate先: menu/list/edit/admin/invoice/dedicated_order" },
+    "targetId": { "type": "STRING", "description": "navigate先で開くデータID" },
+    "targetSubTab": { "type": "STRING", "description": "navigate先のサブタブ" },
+    "filter": {
+      "type": "OBJECT",
+      "properties": {
+        "field": { "type": "STRING" },
+        "operator": { "type": "STRING", "description": "all|equals|contains" },
+        "value": { "type": "STRING" }
+      }
+    },
+    "changes": { "type": "OBJECT", "description": "変更するフィールドと値のマップ" },
+    "modifier": {
+      "type": "OBJECT",
+      "properties": {
+        "field": { "type": "STRING" },
+        "operation": { "type": "STRING" },
+        "value": { "type": "NUMBER" }
+      }
+    },
+    "newItem": { "type": "OBJECT", "description": "追加する新規行データ" }
+  };
+
+  return {
+    "type": "OBJECT",
+    "properties": {
+      "responseType": { "type": "STRING", "description": "navigate|query|action" },
+      "queryType": { "type": "STRING", "description": "projects|orders|invoices|analysis|deposits|payments" },
+      "queryParams": { "type": "OBJECT", "description": "クエリのフィルタパラメータ" },
+      "actions": {
+        "type": "ARRAY",
+        "items": { "type": "OBJECT", "properties": actionProperties }
+      },
+      "summary": { "type": "STRING" },
+      "confidence": { "type": "NUMBER" }
+    }
+  };
+}
+
+function executeAiQuery_(queryType, params) {
+  var QUERY_WHITELIST = ['projects', 'orders', 'invoices', 'analysis', 'deposits', 'payments'];
+  if (QUERY_WHITELIST.indexOf(queryType) === -1) {
+    throw new Error('不正なqueryType: ' + queryType);
+  }
+
+  var data;
+  if (queryType === 'projects') {
+    data = JSON.parse(apiGetProjects());
+    if (params.year) data = data.filter(function(p) { return String(p.date || '').indexOf(String(params.year)) >= 0; });
+    if (params.status) data = data.filter(function(p) { return p.status === params.status; });
+    if (params.client) data = data.filter(function(p) { return String(p.client || '').indexOf(params.client) >= 0; });
+  } else if (queryType === 'orders') {
+    data = JSON.parse(apiGetOrders());
+    if (params.vendor) data = data.filter(function(o) { return String(o.vendor || '').indexOf(params.vendor) >= 0; });
+    if (params.status) data = data.filter(function(o) { return o.status === params.status; });
+  } else if (queryType === 'invoices') {
+    data = JSON.parse(apiGetInvoices());
+    if (params.status) data = data.filter(function(inv) { return inv.status === params.status; });
+    if (params.contractor) data = data.filter(function(inv) { return String(inv.contractor || '').indexOf(params.contractor) >= 0; });
+  } else if (queryType === 'analysis') {
+    data = JSON.parse(apiGetAnalysisData(params.year || new Date().getFullYear()));
+  } else if (queryType === 'deposits') {
+    data = JSON.parse(apiGetDeposits());
+  } else if (queryType === 'payments') {
+    data = JSON.parse(apiGetPayments());
+  }
+
+  // 大量データのトランケート（上位50件）
+  if (Array.isArray(data) && data.length > 50) {
+    data = { items: data.slice(0, 50), total: data.length, truncated: true };
+  }
+
+  return data;
+}
+
+function summarizeQueryResult_(question, data, queryType) {
+  if (!CONFIG.API_KEY) return JSON.stringify(data);
+
+  var dataStr = JSON.stringify(data);
+  if (dataStr.length > 8000) dataStr = dataStr.substring(0, 8000) + '... (truncated)';
+
+  var prompt = 'あなたは建築見積システムのデータアナリストです。\nユーザーの質問に対して、以下のデータを元に日本語で簡潔に回答してください。\n\n【ユーザーの質問】\n' + question + '\n\n【データタイプ】' + queryType + '\n\n【取得データ】\n' + dataStr + '\n\n金額は3桁カンマ区切りで表示してください。回答は簡潔に、必要なデータのみ含めてください。';
+
+  try {
+    var res = UrlFetchApp.fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + CONFIG.API_KEY,
+      {
+        method: "post",
+        contentType: "application/json",
+        payload: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { temperature: 0.3 }
+        }),
+        muteHttpExceptions: true
+      }
+    );
+    var json = JSON.parse(res.getContentText());
+    if (json.candidates && json.candidates[0]) {
+      return json.candidates[0].content.parts[0].text;
+    }
+  } catch (e) {
+    console.error("summarizeQueryResult_ error: " + e.toString());
+  }
+  return 'データを取得しました（' + (Array.isArray(data) ? data.length : '1') + '件）。詳細は一覧画面で確認してください。';
 }

@@ -1,0 +1,8 @@
+test-e2e.js
+node_modules/**
+package.json
+package-lock.json
+screenshot-*.png
+.claude/**
+.mcp.json
+CLAUDE.md

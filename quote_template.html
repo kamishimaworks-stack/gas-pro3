@@ -1,21 +1,23 @@
-<? 
-  var h = data.header || {}; 
-  var id = h.id || ""; 
-  var date = h.date || ""; 
-  var client = h.client || ""; 
-  var location = h.location || ""; 
-  var project = h.project || ""; 
-  var period = h.period || ""; 
-  var payment = h.payment || ""; 
-  var expiry = h.expiry || ""; 
-  
-  var subtotalVal = Number(data.totalAmount) || 0; 
-  var taxVal = Math.floor(subtotalVal * 0.1); 
-  var totalVal = subtotalVal + taxVal; 
-  var subtotal = subtotalVal.toLocaleString(); 
-  var tax = taxVal.toLocaleString(); 
-  var total = "￥" + totalVal.toLocaleString() + "-"; 
-  
+<?
+  var h = data.header || {};
+  var id = h.id || "";
+  var date = h.date || "";
+  var rawClient = h.client || "";
+  var clientName = rawClient.replace(/\s*(御中|様|殿)\s*$/, "").trim();
+  var location = h.location || "";
+  var project = h.project || "";
+  var period = h.period || "";
+  var payment = h.payment || "";
+  var expiry = h.expiry || "";
+
+  var taxMode = h.taxMode || "税別";
+  var subtotalVal = Number(data.totalAmount) || 0;
+  var taxVal = taxMode === "税込" ? 0 : Math.floor(subtotalVal * 0.1);
+  var totalVal = subtotalVal + taxVal;
+  var subtotal = subtotalVal.toLocaleString();
+  var tax = taxVal.toLocaleString();
+  var total = "￥" + totalVal.toLocaleString() + "-";
+
   var pages = data.pages || [data.items];
   var _rowCounter = 0;
 ?>
@@ -75,7 +77,7 @@
     <table class="flex-container">
         <tr>
             <td style="width: 55%;">
-                <div class="customer-name"><?= client ?> 御中</div>
+                <div class="customer-name"><?= clientName ?> 御中</div>
                 <table class="condition-table">
                     <tr><td class="label">工事名</td><td>： <?= project ?></td></tr>
                     <tr><td class="label">工事場所</td><td>： <?= location ?></td></tr>
@@ -142,6 +144,7 @@
                 <? } ?>
 
                 <? if (p === pages.length - 1) { ?>
+                <? if (taxMode !== "税込") { ?>
                 <tr class="row-summary">
                     <td colspan="5" class="border-none"></td>
                     <td class="text-center" style="border:1px solid #333;">小 計</td>
@@ -152,9 +155,10 @@
                     <td class="text-center" style="border:1px solid #333;">消費税</td>
                     <td class="text-right" style="border:1px solid #333; padding-right:5px;"><?= tax ?></td>
                 </tr>
+                <? } ?>
                 <tr class="row-summary">
                     <td colspan="5" class="border-none"></td>
-                    <td class="text-center" style="border:1px solid #333;">合 計</td>
+                    <td class="text-center" style="border:1px solid #333;">合 計 <small>(税込)</small></td>
                     <td class="text-right" style="border:1px solid #333; font-size:11pt; padding-right:5px;"><?= total ?></td>
                 </tr>
                 <? } ?>
