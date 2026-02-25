@@ -3592,12 +3592,13 @@ window.__script2Ran = true;
                     const res = await gas('apiSaveOrderOnly', payload);
                     const r = JSON.parse(res);
                     if(r.success) {
-                        notify("保存しました");
                         if (r.id) dedicatedOrderForm.header.id = r.id;
-                        // 履歴データを即座に更新
-                        await fetchOrders(true);
-                        fetchProjects(true, true).catch(() => {});
                         isDirty.value = false;
+                        // 履歴をローカル即時更新→通知→バックグラウンドで正確なデータを取得
+                        _upsertOrderLocal(r.id, dedicatedOrderForm.header, dedicatedOrderForm.items);
+                        notify("保存しました");
+                        fetchOrders(true).catch(() => {});
+                        fetchProjects(true, true).catch(() => {});
                     } else {
                         notify("保存失敗: " + r.message, "error");
                     }
@@ -3649,6 +3650,8 @@ window.__script2Ran = true;
                     const r = JSON.parse(res);
                     if (r.success) {
                         openUrl(r.url);
+                        // 履歴をローカル即時更新→通知→バックグラウンドで正確なデータを取得
+                        _upsertOrderLocal(r.id || dedicatedOrderForm.header.id, dedicatedOrderForm.header, dedicatedOrderForm.items);
                         notify("発注書を作成しました");
                         fetchOrders(true).catch(() => {});
                         fetchProjects(true, true).catch(() => {});
@@ -4099,27 +4102,31 @@ window.__script2Ran = true;
                 floatingPanel.header = null;
                 floatingPanel.selectAll = false;
                 _initFloatingPanelPos();
-                // 既にデータがあれば即表示、なければローディング表示して取得
+                // キャッシュがあれば即表示、なければサーバーから取得
                 const cached = sourceType === 'estimate' ? projects.value : orders.value;
                 if (cached.length > 0) {
                     floatingPanel.listItems = cached;
                     floatingPanel.loading = false;
+                    // バックグラウンドで最新データを取得して差し替え
+                    (sourceType === 'estimate' ? fetchProjects(true, true) : fetchOrders(true))
+                        .then(() => { floatingPanel.listItems = sourceType === 'estimate' ? projects.value : orders.value; })
+                        .catch(() => {});
                 } else {
                     floatingPanel.listItems = [];
                     floatingPanel.loading = true;
-                }
-                try {
-                    if (sourceType === 'estimate') {
-                        await fetchProjects(true, true);
-                        floatingPanel.listItems = projects.value;
-                    } else {
-                        await fetchOrders(true);
-                        floatingPanel.listItems = orders.value;
+                    try {
+                        if (sourceType === 'estimate') {
+                            await fetchProjects(true, true);
+                            floatingPanel.listItems = projects.value;
+                        } else {
+                            await fetchOrders(true);
+                            floatingPanel.listItems = orders.value;
+                        }
+                    } catch (e) {
+                        notify("履歴の読込に失敗しました: " + e.message, "error");
+                    } finally {
+                        floatingPanel.loading = false;
                     }
-                } catch (e) {
-                    notify("履歴の読込に失敗しました: " + e.message, "error");
-                } finally {
-                    floatingPanel.loading = false;
                 }
             };
             // リストから1件選択→詳細モードへ
@@ -4690,7 +4697,54 @@ window.__script2Ran = true;
                     if(!skipLoading) loading.value = false;
                 }
             };
-            const fetchOrders = async (force = false) => { 
+            // 保存後にprojects.valueをローカルで即時更新（API再取得不要）
+            const _upsertProjectLocal = (id, headerData, items) => {
+                const totalAmount = (items || []).reduce((s, i) => s + (Number(i.amount) || 0), 0);
+                const now = new Date();
+                const dateStr = now.getFullYear() + '/' + String(now.getMonth()+1).padStart(2,'0') + '/' + String(now.getDate()).padStart(2,'0');
+                const idx = projects.value.findIndex(p => p.id === id);
+                if (idx >= 0) {
+                    // 既存エントリを更新
+                    const existing = projects.value[idx];
+                    projects.value[idx] = { ...existing, date: dateStr, updatedAt: now.getTime(),
+                        client: headerData.client || existing.client, project: headerData.project || existing.project,
+                        location: headerData.location || existing.location, period: headerData.period || existing.period,
+                        payment: headerData.payment || existing.payment, expiry: headerData.expiry || existing.expiry,
+                        status: headerData.status || existing.status, visibility: headerData.visibility || existing.visibility,
+                        taxMode: headerData.taxMode || existing.taxMode, totalAmount };
+                } else {
+                    // 新規エントリを先頭に追加
+                    projects.value.unshift({ id, date: dateStr, updatedAt: now.getTime(),
+                        client: headerData.client || '', project: headerData.project || '', location: headerData.location || '',
+                        period: headerData.period || '', payment: headerData.payment || '', expiry: headerData.expiry || '',
+                        status: headerData.status || '未作成', visibility: headerData.visibility || 'public',
+                        taxMode: headerData.taxMode || '税別', totalAmount,
+                        totalOrderAmount: 0, orderCount: 0, totalInvoicedAmount: 0, invoiceCount: 0, totalDeposit: 0, depositCount: 0 });
+                }
+                // 更新日時で降順ソート
+                projects.value.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+            };
+            // 保存後にorders.valueをローカルで即時更新
+            const _upsertOrderLocal = (id, headerData, items) => {
+                const totalAmount = (items || []).reduce((s, i) => s + (Math.round((Number(i.qty) || 0) * (Number(i.cost) || Number(i.price) || 0))), 0);
+                const now = new Date();
+                const dateStr = now.getFullYear() + '/' + String(now.getMonth()+1).padStart(2,'0') + '/' + String(now.getDate()).padStart(2,'0');
+                const idx = orders.value.findIndex(o => o.id === id);
+                if (idx >= 0) {
+                    const existing = orders.value[idx];
+                    orders.value[idx] = { ...existing, date: dateStr, updatedAt: now.getTime(),
+                        vendor: headerData.vendor || existing.vendor, project: headerData.project || existing.project,
+                        location: headerData.location || existing.location, status: headerData.status || existing.status,
+                        totalAmount };
+                } else {
+                    orders.value.unshift({ id, date: dateStr, updatedAt: now.getTime(),
+                        vendor: headerData.vendor || headerData.client || '', project: headerData.project || '',
+                        location: headerData.location || '', period: headerData.period || '',
+                        status: headerData.status || '発注済', totalAmount });
+                }
+                orders.value.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+            };
+            const fetchOrders = async (force = false) => {
                 // 既にデータがあり、強制取得でない場合はスキップ
                 if (!force && orders.value.length > 0) {
                     return;
@@ -4909,8 +4963,9 @@ window.__script2Ran = true;
                     if (r.success) {
                         form.header.id = r.id;
                         isDirty.value = false;
+                        // 履歴をローカル即時更新→通知→バックグラウンドで正確なデータを取得
+                        _upsertProjectLocal(r.id, form.header, form.items);
                         if (!skipNotify) notify("保存しました");
-                        // 履歴データを即座に更新（バックグラウンド）
                         fetchProjects(true, true).catch(() => {});
                         fetchOrders(true).catch(() => {});
                     } else {
@@ -4940,6 +4995,8 @@ window.__script2Ran = true;
                         openUrl(r.url);
                         form.header.id = r.id;
                         isDirty.value = false;
+                        // 履歴をローカル即時更新→通知→バックグラウンドで正確なデータを取得
+                        _upsertProjectLocal(r.id, form.header, form.items);
                         notify("見積PDFを作成しました");
                         fetchProjects(true, true).catch(() => {});
                         fetchOrders(true).catch(() => {});
