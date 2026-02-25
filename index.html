@@ -2152,11 +2152,14 @@
             <template v-if="floatingPanel.sourceType === 'estimate'">
               <div class="divide-y divide-gray-200">
                 <div v-for="p in floatingPanelFilteredList" :key="p.id"
-                     @click="selectFloatingPanelItem(p.id)"
+                     @click="quickApplyFloatingPanelItem(p.id)"
                      class="px-4 py-3 cursor-pointer hover:bg-blue-50 transition-colors">
                   <div class="flex justify-between items-start mb-1">
                     <span class="font-bold text-base text-gray-800">{{ p.client }}</span>
-                    <span class="text-sm px-1.5 py-0.5 rounded flex-shrink-0 ml-2" :class="{'bg-green-100 text-green-700': p.status==='成約', 'bg-yellow-100 text-yellow-700': p.status==='見積提出', 'bg-gray-100 text-gray-600': true}">{{ p.status }}</span>
+                    <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+                      <button @click.stop="selectFloatingPanelItem(p.id)" class="bg-indigo-100 text-indigo-700 border border-indigo-300 px-2 py-0.5 text-xs font-bold rounded hover:bg-indigo-200 transition">詳細</button>
+                      <span class="text-sm px-1.5 py-0.5 rounded" :class="{'bg-green-100 text-green-700': p.status==='成約', 'bg-yellow-100 text-yellow-700': p.status==='見積提出', 'bg-gray-100 text-gray-600': true}">{{ p.status }}</span>
+                    </div>
                   </div>
                   <div class="text-sm text-gray-800 font-bold truncate mb-0.5">{{ p.project || '-' }}</div>
                   <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-700">
@@ -2177,11 +2180,14 @@
             <template v-else>
               <div class="divide-y divide-gray-200">
                 <div v-for="o in floatingPanelFilteredList" :key="o.id"
-                     @click="selectFloatingPanelItem(o.id)"
+                     @click="quickApplyFloatingPanelItem(o.id)"
                      class="px-4 py-3 cursor-pointer hover:bg-orange-50 transition-colors">
                   <div class="flex justify-between items-start mb-1">
                     <span class="font-bold text-base text-orange-800">{{ o.vendor }}</span>
-                    <span class="text-sm px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 flex-shrink-0 ml-2">{{ o.status }}</span>
+                    <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+                      <button @click.stop="selectFloatingPanelItem(o.id)" class="bg-indigo-100 text-indigo-700 border border-indigo-300 px-2 py-0.5 text-xs font-bold rounded hover:bg-indigo-200 transition">詳細</button>
+                      <span class="text-sm px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{{ o.status }}</span>
+                    </div>
                   </div>
                   <div class="text-sm text-gray-800 font-bold truncate mb-0.5">{{ o.project || '-' }}</div>
                   <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-gray-700">
@@ -3588,7 +3594,9 @@ window.__script2Ran = true;
                     if(r.success) {
                         notify("保存しました");
                         if (r.id) dedicatedOrderForm.header.id = r.id;
-                        await fetchOrders(true); // 保存後は強制的に再取得
+                        // 履歴データを即座に更新
+                        await fetchOrders(true);
+                        fetchProjects(true, true).catch(() => {});
                         isDirty.value = false;
                     } else {
                         notify("保存失敗: " + r.message, "error");
@@ -3642,6 +3650,8 @@ window.__script2Ran = true;
                     if (r.success) {
                         openUrl(r.url);
                         notify("発注書を作成しました");
+                        fetchOrders(true).catch(() => {});
+                        fetchProjects(true, true).catch(() => {});
                     } else {
                         notify(r.message, "error");
                     }
@@ -4100,10 +4110,10 @@ window.__script2Ran = true;
                 }
                 try {
                     if (sourceType === 'estimate') {
-                        await fetchProjects(true);
+                        await fetchProjects(true, true);
                         floatingPanel.listItems = projects.value;
                     } else {
-                        await fetchOrders();
+                        await fetchOrders(true);
                         floatingPanel.listItems = orders.value;
                     }
                 } catch (e) {
@@ -4186,6 +4196,92 @@ window.__script2Ran = true;
                 floatingPanel.header = null;
                 floatingPanel.selectAll = false;
                 floatingPanel.listFilter = '';
+            };
+            // 一覧クリック時: データ取得→ヘッダー＋全明細を一括反映してパネルを閉じる
+            const quickApplyFloatingPanelItem = async (id) => {
+                if (floatingPanel.targetContext === 'estimate' && id === form.header.id) {
+                    notify("現在編集中の見積です", "error");
+                    return;
+                }
+                floatingPanel.loading = true;
+                try {
+                    const apiFunc = floatingPanel.sourceType === 'estimate' ? 'apiGetEstimateDetails' : 'apiGetOrderDetails';
+                    const res = await gas(apiFunc, id);
+                    const data = JSON.parse(res);
+                    if (!data || data.error) {
+                        notify(data?.error || "データが見つかりません", "error");
+                        return;
+                    }
+                    const h = data.header;
+                    const items = data.items || [];
+                    if (floatingPanel.targetContext === 'estimate') {
+                        // ヘッダー反映
+                        if (h) {
+                            form.header.client = h.client || form.header.client;
+                            form.header.status = h.status || form.header.status;
+                            form.header.project = h.project || form.header.project;
+                            form.header.location = h.location || form.header.location;
+                            form.header.period = h.period || form.header.period;
+                            form.header.payment = h.payment || form.header.payment;
+                            form.header.expiry = h.expiry || form.header.expiry;
+                            form.header.taxMode = h.taxMode || form.header.taxMode;
+                        }
+                        // 先頭の空行を削除
+                        while (form.items.length > 0 && !String(form.items[0].product || '').trim() && !String(form.items[0].category || '').trim()) {
+                            form.items.splice(0, 1);
+                        }
+                        // 全明細を追加
+                        items.forEach(it => {
+                            form.items.push({
+                                _uid: genUid(),
+                                category: it.category || "", product: it.product || "", spec: it.spec || "",
+                                qty: Number(it.qty) || 0, unit: it.unit || "", price: Number(it.price) || 0,
+                                cost: Number(it.cost) || 0,
+                                amount: Math.round((Number(it.qty) || 0) * (Number(it.price) || 0)),
+                                remarks: it.remarks || "", vendor: it.vendor || "",
+                                orderedQty: "", orderedAmount: 0, selected: false
+                            });
+                        });
+                    } else {
+                        // 発注フォーム ヘッダー反映
+                        if (h) {
+                            dedicatedOrderForm.header.client = h.vendor || h.client || dedicatedOrderForm.header.client;
+                            dedicatedOrderForm.header.project = h.project || dedicatedOrderForm.header.project;
+                            dedicatedOrderForm.header.location = h.location || dedicatedOrderForm.header.location;
+                            dedicatedOrderForm.header.period = h.period || dedicatedOrderForm.header.period;
+                            dedicatedOrderForm.header.payment = h.payment || dedicatedOrderForm.header.payment;
+                            dedicatedOrderForm.header.expiry = h.expiry || dedicatedOrderForm.header.expiry;
+                            dedicatedOrderForm.header.taxMode = h.taxMode || dedicatedOrderForm.header.taxMode;
+                            dedicatedOrderForm.header.relEstId = h.relEstId || dedicatedOrderForm.header.relEstId;
+                        }
+                        // 先頭の空行を削除
+                        while (dedicatedOrderForm.items.length > 0 && !String(dedicatedOrderForm.items[0].product || '').trim()) {
+                            dedicatedOrderForm.items.splice(0, 1);
+                        }
+                        // 全明細を追加
+                        items.forEach(it => {
+                            const qty = Number(it.qty) || 0;
+                            const price = Number(it.price) || 0;
+                            const cost = Number(it.cost) || 0;
+                            const itemVendor = it.vendor || (h && h.vendor) || "";
+                            dedicatedOrderForm.items.push({
+                                product: it.product || "", spec: it.spec || "", vendor: itemVendor,
+                                estQty: qty, estUnit: it.unit || "", estPrice: price,
+                                estAmount: Math.round(qty * price),
+                                exeQty: qty, exeUnit: it.unit || "", exePrice: cost || price,
+                                exeAmount: Math.round(qty * (cost || price)),
+                                selected: false
+                            });
+                        });
+                    }
+                    isDirty.value = true;
+                    closeFloatingPanel();
+                    notify(`${items.length}件の明細を全て反映しました`);
+                } catch (e) {
+                    notify("読込エラー: " + e.message, "error");
+                } finally {
+                    floatingPanel.loading = false;
+                }
             };
             const toggleFloatingPanelSelectAll = () => {
                 const val = floatingPanel.selectAll;
@@ -4814,7 +4910,8 @@ window.__script2Ran = true;
                         form.header.id = r.id;
                         isDirty.value = false;
                         if (!skipNotify) notify("保存しました");
-                        // 自動発注生成されるため発注キャッシュを更新
+                        // 履歴データを即座に更新（バックグラウンド）
+                        fetchProjects(true, true).catch(() => {});
                         fetchOrders(true).catch(() => {});
                     } else {
                         notify("保存失敗: " + r.message, "error");
@@ -4844,6 +4941,8 @@ window.__script2Ran = true;
                         form.header.id = r.id;
                         isDirty.value = false;
                         notify("見積PDFを作成しました");
+                        fetchProjects(true, true).catch(() => {});
+                        fetchOrders(true).catch(() => {});
                     } else {
                         notify(r.message || "PDF作成に失敗しました", "error");
                     }
@@ -5649,7 +5748,7 @@ window.__script2Ran = true;
                 assistantBtnVisible, assistantCtxMenu, openAssistantCtxMenu, setAssistantBtnVisible,
                 showChatBot, chatInput, chatMessages, isChatThinking, sendChatMessage, chatMode, aiAssistantInput, aiAssistantMessages, isAiAssistantThinking, aiAssistantLoadingText, aiAssistantPlaceholder, sendAiAssistantMessage, applyAiActions, cancelAiAction, aiPendingActions, handleAiNavigation,
                 chatPosX, chatPosY, isDragging, onChatDragStart, onChatBtnClick,
-                floatingPanel, floatingPanelPosX, floatingPanelPosY, isFloatingPanelDragging, onFloatingPanelDragStart, openFloatingEstimatePanel, openFloatingPanelList, selectFloatingPanelItem, floatingPanelBack, closeFloatingPanel, toggleFloatingPanelSelectAll, addFloatingPanelItems, applyFloatingPanelHeader, floatingPanelCheckedCount, floatingPanelFilteredList,
+                floatingPanel, floatingPanelPosX, floatingPanelPosY, isFloatingPanelDragging, onFloatingPanelDragStart, openFloatingEstimatePanel, openFloatingPanelList, selectFloatingPanelItem, quickApplyFloatingPanelItem, floatingPanelBack, closeFloatingPanel, toggleFloatingPanelSelectAll, addFloatingPanelItems, applyFloatingPanelHeader, floatingPanelCheckedCount, floatingPanelFilteredList,
                 sidePanelMode, orderInPanel, toggleSidePanel, closeSidePanel, handleEstimateRowClick, saveOrderPanelToEstimate, currentEstimateOrders, reprintOrderPdf, openOrderForEdit,
                 batchVendorSelect, tempBatchVendor, applyBatchVendorToPanel, selectedItemsCount, toggleSelectionMode, selectAllRows, clearAllSelection, handleRowSelection, batchUpdateVendor,
                 selectByVendorPrompt, selectByCategoryPrompt, selectByProductPrompt, selectUnorderedRows, selectBatchOption,
