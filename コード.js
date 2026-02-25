@@ -2132,11 +2132,11 @@ function _parseEstimateImageWithGemini(base64, mime) {
   if (!CONFIG.API_KEY) return { error: "APIキーが未設定です" };
   const prompt = `あなたは建築積算の専門家です。この画像/PDFから見積書・請求書・納品書の明細行を読み取り、すべての品目を抽出してください。
 【抽出ルール】
-- 各行の「工種(カテゴリ)」「品名」「仕様・規格」「数量」「単位」「単価」を読み取る
-- 数量が空欄の場合は 1 とする
+- 各行の「工種(カテゴリ)」「品名」「仕様・規格」「数量」「単位」「単価」「金額」を読み取る
+- 数量が空欄の場合は 0 とする（後で金額から逆算する）
 - 単位が空欄の場合は "式" とする
 - 単価が不明な場合は 0 とする
-- 金額欄しかない場合は、数量=1, 単位="式", 単価=金額 とする
+- 金額が記載されていれば必ず読み取る。金額が空欄の場合は 0 とする
 - ヘッダ行・合計行・消費税行は除外する
 - 工種/カテゴリが明記されていない場合は空文字列にする`;
   const parts = [{ text: prompt }, { inline_data: { mime_type: mime, data: base64 } }];
@@ -2153,7 +2153,8 @@ function _parseEstimateImageWithGemini(base64, mime) {
             "spec":     { "type": "STRING", "description": "仕様・規格・サイズ" },
             "qty":      { "type": "NUMBER", "description": "数量" },
             "unit":     { "type": "STRING", "description": "単位(式, m, m2, 枚, 個 等)" },
-            "price":    { "type": "NUMBER", "description": "単価(円)" }
+            "price":    { "type": "NUMBER", "description": "単価(円)" },
+            "amount":   { "type": "NUMBER", "description": "金額(円)" }
           },
           "required": ["product"]
         }
@@ -2171,10 +2172,32 @@ function _parseEstimateImageWithGemini(base64, mime) {
   if (json.error) return { error: "Gemini API Error: " + json.error.message };
   if (!json.candidates || !json.candidates[0]) return { error: "AIから回答を取得できませんでした" };
   const parsed = JSON.parse(json.candidates[0].content.parts[0].text);
-  return { items: (parsed.items || []).map(item => ({
-    category: item.category || "", product: item.product || "", spec: item.spec || "",
-    qty: Number(item.qty) || 1, unit: item.unit || "式", price: Number(item.price) || 0
-  }))};
+  return { items: (parsed.items || []).map(item => {
+    let qty = Number(item.qty) || 0;
+    let price = Number(item.price) || 0;
+    let amount = Number(item.amount) || 0;
+    // 金額があるが数量・単価が不完全な場合の逆算
+    if (amount > 0) {
+      if (price > 0 && qty === 0) {
+        // 金額と単価から数量を逆算
+        qty = Math.round((amount / price) * 100) / 100;
+      } else if (qty > 0 && price === 0) {
+        // 金額と数量から単価を逆算
+        price = Math.round(amount / qty);
+      } else if (qty === 0 && price === 0) {
+        // 金額のみ: 数量=1, 単価=金額
+        qty = 1; price = amount;
+      }
+    }
+    // 数量が0のままなら1にフォールバック
+    if (qty === 0) qty = 1;
+    // 金額の整合性チェック: OCR金額が無い場合は計算で補完
+    if (amount === 0 && price > 0) amount = Math.round(qty * price);
+    return {
+      category: item.category || "", product: item.product || "", spec: item.spec || "",
+      qty: qty, unit: item.unit || "式", price: price, amount: amount
+    };
+  })};
 }
 
 function _parseTextEstimateItems(file) {
@@ -2188,8 +2211,18 @@ function _parseTextEstimateItems(file) {
   lines.forEach(line => {
     const cols = line.split(/\t/);
     if (cols.length >= 2) {
+      let qty = parseCurrency(cols[3]) || 0;
+      let price = parseCurrency(cols[5]) || 0;
+      let amount = parseCurrency(cols[6]) || 0;
+      if (amount > 0) {
+        if (price > 0 && qty === 0) qty = Math.round((amount / price) * 100) / 100;
+        else if (qty > 0 && price === 0) price = Math.round(amount / qty);
+        else if (qty === 0 && price === 0) { qty = 1; price = amount; }
+      }
+      if (qty === 0) qty = 1;
+      if (amount === 0 && price > 0) amount = Math.round(qty * price);
       items.push({ category: cols[0] || "", product: cols[1] || "", spec: cols[2] || "",
-        qty: parseCurrency(cols[3]) || 1, unit: cols[4] || "式", price: parseCurrency(cols[5]) || 0 });
+        qty: qty, unit: cols[4] || "式", price: price, amount: amount });
     }
   });
   return { items };
@@ -3923,7 +3956,7 @@ function buildUnifiedPrompt_(userInstruction, ctx) {
     }).join('\n');
   }
 
-  return 'あなたは建築見積システムの操作アシスタントです。\nユーザーの自然言語の指示を解析し、適切なレスポンスタイプ(navigate/query/action)を判別してJSONを生成してください。\n\n【現在の画面】' + screenLabel + ' (' + screen + ')' + dataContext + actionDefs + '\n\n【filterの仕様】\n- operator: "all"(全件), "equals"(完全一致), "contains"(部分一致)\n- field: 検索対象のフィールド名\n- value: 比較する値\n\n【modifierの仕様（数値変更用）】\n- field: 対象フィールド\n- operation: "multiply"(乗算), "add"(加算), "set"(直接設定)\n- value: 数値\n\n【queryTypeの仕様】\n- projects: 見積一覧。queryParamsにyear,status,clientでフィルタ可。\n- orders: 発注一覧。queryParamsにvendor,statusでフィルタ可。\n- invoices: 請求書一覧。queryParamsにstatus,contractorでフィルタ可。\n- analysis: 分析データ。queryParamsにyearを指定。\n- deposits: 入金一覧。\n- payments: 出金一覧。' + historyContext + '\n\n【ユーザーの指示】\n' + userInstruction + '\n\n注意:\n- responseTypeは navigate / query / action のいずれかを必ず指定\n- confidenceは0〜1で、指示が曖昧な場合は低い値を返してください\n- summaryは日本語で内容を簡潔に説明してください\n- 画面遷移の指示にはnavigate、データに関する質問にはquery、フォーム操作にはactionを使用\n- 現在の画面で使えないアクションは生成しないでください\n- 指示が操作と無関係な場合はactions空配列でsummaryに説明を入れてください';
+  return 'あなたは建築見積システムの操作アシスタントです。\nユーザーの自然言語の指示を解析し、適切なレスポンスタイプ(navigate/query/action)を判別してJSONを生成してください。\n\n【最重要ルール】\n操作(action)は必ず「現在表示中の画面のデータのみ」を対象にしてください。\n「全て」「全部」等の指示は「現在の画面に表示されている明細全て」を意味します。\nデータベースや他の画面のデータを変更する操作は絶対に生成しないでください。\n例: 見積編集画面で「発注先を全て○○にして」→ 今開いている見積の明細だけ変更する\n\n【現在の画面】' + screenLabel + ' (' + screen + ')' + dataContext + actionDefs + '\n\n【filterの仕様】\n- operator: "all"(現在の画面の全件), "equals"(完全一致), "contains"(部分一致)\n- field: 検索対象のフィールド名\n- value: 比較する値\n\n【modifierの仕様（数値変更用）】\n- field: 対象フィールド\n- operation: "multiply"(乗算), "add"(加算), "set"(直接設定)\n- value: 数値\n\n【queryTypeの仕様】\n- projects: 見積一覧。queryParamsにyear,status,clientでフィルタ可。\n- orders: 発注一覧。queryParamsにvendor,statusでフィルタ可。\n- invoices: 請求書一覧。queryParamsにstatus,contractorでフィルタ可。\n- analysis: 分析データ。queryParamsにyearを指定。\n- deposits: 入金一覧。\n- payments: 出金一覧。' + historyContext + '\n\n【ユーザーの指示】\n' + userInstruction + '\n\n注意:\n- responseTypeは navigate / query / action のいずれかを必ず指定\n- confidenceは0〜1で、指示が曖昧な場合は低い値を返してください\n- summaryは日本語で内容を簡潔に説明してください\n- 画面遷移の指示にはnavigate、データに関する質問にはquery、フォーム操作にはactionを使用\n- actionは現在表示中の画面のフォームデータのみを対象とし、他の画面やDBのデータは変更しない\n- 現在の画面で使えないアクションは生成しないでください\n- 指示が操作と無関係な場合はactions空配列でsummaryに説明を入れてください';
 }
 
 function buildUnifiedResponseSchema_(screen) {

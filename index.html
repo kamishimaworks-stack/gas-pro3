@@ -717,6 +717,10 @@
 
               <div class="edit-main legacy-card p-4 rounded shadow-inner relative">
                 <div class="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2 mb-4 bg-white/50 p-2 rounded border border-black/10">
+                    <div class="flex items-center">
+                        <label class="w-16 text-xs font-bold">日付:</label>
+                        <input type="date" v-model="dedicatedOrderForm.header.date" class="input-base text-xs">
+                    </div>
                     <div class="flex items-center relative">
                         <label class="w-16 text-xs font-bold">顧客名:</label>
                         <input type="text" v-model="dedicatedOrderForm.header.client"
@@ -734,10 +738,6 @@
                                   :class="c.type === '元請' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'">{{ c.type }}</span>
                           </div>
                         </div>
-                    </div>
-                    <div class="flex items-center">
-                        <label class="w-16 text-xs font-bold">発注日:</label>
-                        <input type="text" v-model="dedicatedOrderForm.header.date" class="input-base text-xs" placeholder="yyyy/MM/dd">
                     </div>
                     <div class="flex items-center relative">
                         <label class="w-16 text-xs font-bold">件名:</label>
@@ -2076,13 +2076,37 @@
         </div>
       </transition>
 
-      <button @click="onChatBtnClick"
+      <button v-if="assistantBtnVisible" @click="onChatBtnClick"
+              @contextmenu.prevent="openAssistantCtxMenu($event)"
               @mousedown="onChatDragStart($event)" @touchstart="onChatDragStart($event)"
               class="chatbot-btn-draggable bg-purple-700 text-white w-14 h-14 rounded-full shadow-lg hover:bg-purple-800 transition flex items-center justify-center border-2 border-white"
               :class="{ 'transform hover:scale-110': !isDragging }">
         <span class="material-icons" style="font-size: 28px;">support_agent</span>
       </button>
+      <div v-if="!assistantBtnVisible"
+           @contextmenu.prevent="openAssistantCtxMenu($event)"
+           class="w-5 h-5 rounded-full bg-purple-300 opacity-40 hover:opacity-80 cursor-pointer transition border border-purple-400"
+           title="右クリックでAIアシスタントを表示"></div>
     </div>
+
+    <!-- AIアシスタント右クリックメニュー -->
+    <teleport to="body">
+      <div v-if="assistantCtxMenu.show" class="fixed inset-0 z-[10001]" @click="assistantCtxMenu.show=false" @contextmenu.prevent="assistantCtxMenu.show=false">
+        <div class="absolute bg-white border border-gray-300 rounded-lg shadow-xl py-1 min-w-[160px] text-sm"
+             :style="{ left: assistantCtxMenu.x + 'px', top: assistantCtxMenu.y + 'px' }">
+          <div @click="setAssistantBtnVisible(true)" class="px-4 py-2 hover:bg-purple-50 cursor-pointer flex items-center gap-2"
+               :class="assistantBtnVisible ? 'text-purple-700 font-bold' : 'text-gray-600'">
+            <span class="material-icons text-sm">{{ assistantBtnVisible ? 'radio_button_checked' : 'radio_button_unchecked' }}</span>
+            表示
+          </div>
+          <div @click="setAssistantBtnVisible(false)" class="px-4 py-2 hover:bg-purple-50 cursor-pointer flex items-center gap-2"
+               :class="!assistantBtnVisible ? 'text-purple-700 font-bold' : 'text-gray-600'">
+            <span class="material-icons text-sm">{{ !assistantBtnVisible ? 'radio_button_checked' : 'radio_button_unchecked' }}</span>
+            非表示
+          </div>
+        </div>
+      </div>
+    </teleport>
 
     <!-- フローティング見積プレビューパネル -->
     <div v-if="floatingPanel.show"
@@ -2383,12 +2407,13 @@
                 <table class="w-full text-xs">
                   <thead class="bg-gray-100 sticky top-0"><tr>
                     <th class="p-1 text-left">工種</th><th class="p-1 text-left">品名</th><th class="p-1 text-left">仕様</th>
-                    <th class="p-1 text-right">数量</th><th class="p-1">単位</th><th class="p-1 text-right">単価</th>
+                    <th class="p-1 text-right">数量</th><th class="p-1">単位</th><th class="p-1 text-right">単価</th><th class="p-1 text-right">金額</th>
                   </tr></thead>
                   <tbody><tr v-for="(item, idx) in ocrResults" :key="idx" class="border-b">
                     <td class="p-1">{{ item.category }}</td><td class="p-1 font-bold">{{ item.product }}</td>
                     <td class="p-1 text-gray-600">{{ item.spec }}</td><td class="p-1 text-right">{{ formatCurrency(item.qty) }}</td>
                     <td class="p-1 text-center">{{ item.unit }}</td><td class="p-1 text-right">{{ formatCurrency(item.price) }}</td>
+                    <td class="p-1 text-right">{{ formatCurrency(item.amount || Math.round((Number(item.qty)||0) * (Number(item.price)||0))) }}</td>
                   </tr></tbody>
                 </table>
               </div>
@@ -2517,6 +2542,27 @@ window.__script2Ran = true;
         }
         google.script.run.withSuccessHandler(resolve).withFailureHandler(err => reject(new Error(err)))[funcName](...args);
     });
+
+    // 日付文字列をinput[type=date]用のyyyy-MM-dd形式に変換
+    function toDateInputValue(dateStr) {
+        if (!dateStr) return '';
+        const s = String(dateStr).trim();
+        // すでにyyyy-MM-dd形式
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        // yyyy/MM/dd (HH:mm)形式
+        const slashMatch = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+        if (slashMatch) return slashMatch[1] + '-' + slashMatch[2].padStart(2,'0') + '-' + slashMatch[3].padStart(2,'0');
+        // 令和X年Y月Z日 / X年Y月Z日 形式
+        const jpMatch = s.match(/(?:令和(\d+|元)|(\d{4}))年(\d{1,2})月(\d{1,2})日/);
+        if (jpMatch) {
+            const year = jpMatch[2] ? parseInt(jpMatch[2]) : (jpMatch[1] === '元' ? 2019 : 2018 + parseInt(jpMatch[1]));
+            return year + '-' + String(jpMatch[3]).padStart(2,'0') + '-' + String(jpMatch[4]).padStart(2,'0');
+        }
+        // Date()で解析を試みる
+        try { const d = new Date(s); if (!isNaN(d)) return d.toISOString().slice(0,10); } catch(e) {}
+        return '';
+    }
+    function getTodayISO() { return new Date().toISOString().slice(0,10); }
 
     // Helper for date (Phase 4)
     function getJapaneseDateStr(date) {
@@ -2719,7 +2765,7 @@ window.__script2Ran = true;
 
             // Phase 4: 専用発注画面データ
             const dedicatedOrderForm = reactive({
-                header: { id: "", client: "", date: getJapaneseDateStr(), relEstId: "", location: "", project: "", period: "", payment: "", expiry: "", status: "発注書作成", visibility: "public", taxMode: "税別" },
+                header: { id: "", client: "", date: getTodayISO(), relEstId: "", location: "", project: "", period: "", payment: "", expiry: "", status: "発注書作成", visibility: "public", taxMode: "税別" },
                 items: [{ product: "", spec: "", vendor: "", estQty: "", estUnit: "", estPrice: "", estAmount: 0, exeQty: "", exeUnit: "", exePrice: "", exeAmount: 0 }]
             });
 
@@ -3054,6 +3100,22 @@ window.__script2Ran = true;
             // 改善7: 業者別プレビュー用
             const vendorSplitPreview = ref(null); // { vendors: { name, items, total }, totalAmount, action: 'save'|'pdf' }
             
+            // --- AIアシスタントボタン表示/非表示 ---
+            const assistantBtnVisible = ref(localStorage.getItem('assistantBtnVisible') !== 'false');
+            const assistantCtxMenu = reactive({ show: false, x: 0, y: 0 });
+            const openAssistantCtxMenu = (e) => {
+                const menuW = 170, menuH = 80;
+                assistantCtxMenu.x = Math.min(e.clientX, window.innerWidth - menuW);
+                assistantCtxMenu.y = Math.min(e.clientY, window.innerHeight - menuH);
+                assistantCtxMenu.show = true;
+            };
+            const setAssistantBtnVisible = (val) => {
+                assistantBtnVisible.value = val;
+                localStorage.setItem('assistantBtnVisible', val);
+                assistantCtxMenu.show = false;
+                if (!val && showChatBot.value) showChatBot.value = false;
+            };
+
             // --- AIチャットボット用データ ---
             const showChatBot = ref(false);
             const chatInput = ref("");
@@ -3358,7 +3420,7 @@ window.__script2Ran = true;
                 if (hasData) {
                     formSnapshot.value = { source: 'dedicated_order', header: JSON.parse(JSON.stringify(dedicatedOrderForm.header)), items: JSON.parse(JSON.stringify(dedicatedOrderForm.items)) };
                 }
-                dedicatedOrderForm.header = { id: "", client: "", date: getJapaneseDateStr(), relEstId: "", location: "", project: "", period: "", payment: "", expiry: "", status: "発注書作成", visibility: "public" };
+                dedicatedOrderForm.header = { id: "", client: "", date: getTodayISO(), relEstId: "", location: "", project: "", period: "", payment: "", expiry: "", status: "発注書作成", visibility: "public" };
                 dedicatedOrderForm.items = [{ product: "", spec: "", vendor: "", estQty: "", estUnit: "", estPrice: "", estAmount: 0, exeQty: "", exeUnit: "", exePrice: "", exeAmount: 0, selected: false }];
                 estSuggestions.value = [];
                 showEstSuggestions.value = false;
@@ -3603,7 +3665,7 @@ window.__script2Ran = true;
                     dedicatedOrderForm.header = {
                         id: data.header.id || "",
                         client: data.header.client || "",
-                        date: data.header.date || getJapaneseDateStr(),
+                        date: toDateInputValue(data.header.date) || getTodayISO(),
                         relEstId: data.header.relEstId || "",
                         location: data.header.location || "",
                         project: data.header.project || "",
@@ -3652,7 +3714,7 @@ window.__script2Ran = true;
                     dedicatedOrderForm.header = {
                         id: "",
                         client: data.header.client || "",
-                        date: getJapaneseDateStr(),
+                        date: getTodayISO(),
                         relEstId: estId,
                         location: data.header.location || "",
                         project: data.header.project || "",
@@ -4143,7 +4205,7 @@ window.__script2Ran = true;
                     form.header.expiry = h.expiry || form.header.expiry;
                     form.header.taxMode = h.taxMode || form.header.taxMode;
                 } else {
-                    dedicatedOrderForm.header.date = h.date || dedicatedOrderForm.header.date;
+                    dedicatedOrderForm.header.date = toDateInputValue(h.date) || dedicatedOrderForm.header.date;
                     dedicatedOrderForm.header.client = h.vendor || h.client || dedicatedOrderForm.header.client;
                     dedicatedOrderForm.header.project = h.project || dedicatedOrderForm.header.project;
                     dedicatedOrderForm.header.location = h.location || dedicatedOrderForm.header.location;
@@ -4474,7 +4536,7 @@ window.__script2Ran = true;
                     dedicatedOrderForm.header = {
                         id: data.header.id || "",
                         vendor: data.header.vendor || "",
-                        date: data.header.date || "",
+                        date: toDateInputValue(data.header.date) || getTodayISO(),
                         relEstId: data.header.relEstId || "",
                         project: data.header.project || "",
                         location: data.header.location || "",
@@ -5079,18 +5141,23 @@ window.__script2Ran = true;
                 if (currentTab.value === 'dedicated_order') {
                     if (mode === 'replace') dedicatedOrderForm.items = [];
                     items.forEach(item => {
-                        const newRow = {product: item.product || "", spec: item.spec || "", vendor: "", estQty: Number(item.qty) || 1, estUnit: item.unit || "式", estPrice: Number(item.price) || "", estAmount: 0, exeQty: Number(item.qty) || 1, exeUnit: item.unit || "式", exePrice: Number(item.price) || "", exeAmount: 0, selected: false};
-                        newRow.estAmount = Math.round((Number(newRow.estQty)||0) * (Number(newRow.estPrice)||0));
-                        newRow.exeAmount = Math.round((Number(newRow.exeQty)||0) * (Number(newRow.exePrice)||0));
+                        const ocrAmount = Number(item.amount) || 0;
+                        const qty = Number(item.qty) || 1;
+                        const price = Number(item.price) || 0;
+                        const calcAmount = Math.round(qty * price);
+                        const newRow = {product: item.product || "", spec: item.spec || "", vendor: "", estQty: qty, estUnit: item.unit || "式", estPrice: price, estAmount: ocrAmount || calcAmount, exeQty: qty, exeUnit: item.unit || "式", exePrice: price, exeAmount: ocrAmount || calcAmount, selected: false};
                         dedicatedOrderForm.items.push(newRow);
                     });
                 } else {
                     if (mode === 'replace') form.items = [];
                     items.forEach(item => {
+                        const ocrAmount = Number(item.amount) || 0;
+                        const qty = Number(item.qty) || 1;
+                        const price = Number(item.price) || 0;
+                        const calcAmount = Math.round(qty * price);
                         const newItem = { _uid: genUid(), category: item.category || "", product: item.product || "", spec: item.spec || "",
-                            qty: Number(item.qty) || 1, unit: item.unit || "式", price: Number(item.price) || "",
-                            cost: "", amount: 0, orderedQty: "", orderedAmount: 0, selected: false };
-                        calcLine(newItem);
+                            qty: qty, unit: item.unit || "式", price: price,
+                            cost: "", amount: ocrAmount || calcAmount, orderedQty: "", orderedAmount: 0, selected: false };
                         form.items.push(newItem);
                     });
                 }
@@ -5579,6 +5646,7 @@ window.__script2Ran = true;
                 showOcrModal, ocrFiles, isOcrLoading, selectedOcrFiles, ocrTab, ocrUploadFiles, ocrResults, showOcrPreview, ocrProcessing,
                 showDraftModal, drafts, isDraftLoading, estimateCandidates,
                 showVendorSelectModal, vendorCandidates, vendorSplitPreview,
+                assistantBtnVisible, assistantCtxMenu, openAssistantCtxMenu, setAssistantBtnVisible,
                 showChatBot, chatInput, chatMessages, isChatThinking, sendChatMessage, chatMode, aiAssistantInput, aiAssistantMessages, isAiAssistantThinking, aiAssistantLoadingText, aiAssistantPlaceholder, sendAiAssistantMessage, applyAiActions, cancelAiAction, aiPendingActions, handleAiNavigation,
                 chatPosX, chatPosY, isDragging, onChatDragStart, onChatBtnClick,
                 floatingPanel, floatingPanelPosX, floatingPanelPosY, isFloatingPanelDragging, onFloatingPanelDragStart, openFloatingEstimatePanel, openFloatingPanelList, selectFloatingPanelItem, floatingPanelBack, closeFloatingPanel, toggleFloatingPanelSelectAll, addFloatingPanelItems, applyFloatingPanelHeader, floatingPanelCheckedCount, floatingPanelFilteredList,
