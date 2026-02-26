@@ -33,3 +33,8 @@ DB=Spreadsheet、ストレージ=Drive、AI=Gemini API。
 1. バックエンドでデータを `{header, items, pages}` に構造化。
 2. `HtmlService.createTemplateFromFile('テンプレート名')` で展開。
 3. 生成HTMLをDriveへPDF保存し、URLをフロントへ返却。
+
+## ログ・出力の言語ルール
+- **console.log / Logger.log などのログメッセージは日本語で記述する。**
+- ただし、**ファイル名・関数名・変数名・パス**はそのまま英数字(コード上の表記)で出力する。
+- 例: `console.log('保存完了: ' + fileName)` / `Logger.log('apiSaveEstimate: 見積データを保存しました')`

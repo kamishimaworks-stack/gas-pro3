@@ -1482,10 +1482,23 @@
                             <span v-if="isAnalyzing" class="ml-2 text-blue-600 font-bold animate-pulse">解析中...</span>
                         </div>
 
+                        <!-- ステータス管理 -->
+                        <div v-if="invoiceForm.id" class="flex items-center gap-3 mb-3 p-2 rounded border"
+                             :class="{'bg-blue-50 border-blue-300': invoiceForm.status==='着工', 'bg-green-50 border-green-300': invoiceForm.status==='完了', 'bg-gray-100 border-gray-300': invoiceForm.status==='支払済'}">
+                            <span class="text-xs font-bold text-gray-600">ステータス:</span>
+                            <select v-model="invoiceForm.status" @change="updateInvoiceStatus(invoiceForm.id, invoiceForm.status)"
+                                    class="text-sm font-bold rounded px-2 py-1 border"
+                                    :class="{'bg-blue-100 text-blue-800 border-blue-400': invoiceForm.status==='着工', 'bg-green-100 text-green-800 border-green-400': invoiceForm.status==='完了', 'bg-gray-200 text-gray-700 border-gray-400': invoiceForm.status==='支払済'}">
+                                <option value="着工">着工</option>
+                                <option value="完了">完了</option>
+                                <option value="支払済">支払済</option>
+                            </select>
+                        </div>
+
                         <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-xs font-bold mb-1">工事番号 (自動)</label>
-                                <input v-model="invoiceForm.constructionId" class="input-base bg-gray-100" readonly>
+                                <label class="block text-xs font-bold mb-1">工事番号</label>
+                                <input v-model="invoiceForm.constructionId" @change="checkOrderBalance" class="input-base bg-yellow-50" placeholder="自動採番 or 手入力">
                             </div>
                             <div>
                                 <label class="block text-xs font-bold mb-1">担当者</label>
@@ -1548,25 +1561,40 @@
             
             <div class="mt-4 border-t border-gray-400 pt-2">
                 <div class="flex justify-between items-center mb-2">
-                    <span class="font-bold text-sm">登録済み請求書一覧 (編集は行をクリック)</span>
-                    <button @click="fetchInvoices" class="text-xs text-blue-600 underline">リスト更新</button>
+                    <span class="font-bold text-sm">登録済み請求書一覧</span>
+                    <div class="flex items-center gap-2">
+                        <select v-model="invoiceStatusFilter" class="text-xs border rounded px-2 py-1">
+                            <option value="">全て</option>
+                            <option value="着工">着工中</option>
+                            <option value="完了">完了</option>
+                            <option value="支払済">支払済</option>
+                        </select>
+                        <button @click="fetchInvoices" class="text-xs text-blue-600 underline">更新</button>
+                    </div>
                 </div>
-                <div class="overflow-x-auto bg-white border border-gray-300 h-40">
+                <div class="overflow-x-auto bg-white border border-gray-300" style="max-height:200px; overflow-y:auto">
                       <table class="grid-legacy">
                         <thead>
                            <tr>
-                             <th>日時</th><th>ステータス</th><th>工事名</th><th>担当者</th><th>施工者</th><th>金額</th><th>操作</th>
+                             <th>工事番号</th><th>ステータス</th><th>工事名</th><th>担当者</th><th>施工者</th><th>金額</th><th>操作</th>
                            </tr>
                         </thead>
                         <tbody>
-                           <tr v-for="inv in adminInvoices" :key="inv.id" class="hover:bg-yellow-50 cursor-pointer" @click="editInvoice(inv)">
-                               <td class="text-center text-[10px]">{{ inv.registeredAt }}</td>
-                               <td class="text-center text-xs">{{ inv.status }}</td>
+                           <tr v-for="inv in filteredInvoices" :key="inv.id" class="hover:bg-yellow-50 cursor-pointer" @click="editInvoice(inv)">
+                               <td class="text-center text-[10px] font-mono">{{ inv.constructionId }}</td>
+                               <td class="text-center">
+                                 <span class="px-1.5 py-0.5 rounded text-[10px] font-bold"
+                                       :class="{'bg-blue-100 text-blue-800': inv.status==='着工', 'bg-green-100 text-green-800': inv.status==='完了', 'bg-gray-200 text-gray-600': inv.status==='支払済'}">{{ inv.status }}</span>
+                               </td>
                                <td class="pl-2 text-xs truncate max-w-xs">{{ inv.project }}</td>
                                <td class="pl-2 text-xs">{{ inv.person }}</td>
                                <td class="pl-2 text-xs">{{ inv.contractor }}</td>
                                <td class="text-right num-cell font-mono">{{ formatCurrency(inv.amount) }}</td>
-                               <td class="text-center"><button class="bg-gray-200 border px-2 py-0.5 text-[10px]">編集</button></td>
+                               <td class="text-center" @click.stop>
+                                 <button v-if="inv.status==='着工'" @click="updateInvoiceStatus(inv.id,'完了'); inv.status='完了'" class="bg-green-600 text-white px-1.5 py-0.5 text-[10px] rounded">完了</button>
+                                 <button v-else-if="inv.status==='完了'" @click="updateInvoiceStatus(inv.id,'支払済'); inv.status='支払済'" class="bg-gray-500 text-white px-1.5 py-0.5 text-[10px] rounded">支払済</button>
+                                 <span v-else class="text-[10px] text-gray-400">済</span>
+                               </td>
                            </tr>
                         </tbody>
                       </table>
@@ -1957,11 +1985,12 @@
                               </ol>
                               <div class="mt-2 bg-white border rounded p-2">
                                   <p class="text-xs font-bold text-gray-600 mb-1">メッセージフォーマット例:</p>
-                                  <pre class="text-xs text-gray-700 whitespace-pre-wrap">請求元: ○○建設
-請求金額: 1000000
-請求日: 2026/02/20
-内容: 外壁塗装工事
-現場名: ○○邸新築工事</pre>
+                                  <pre class="text-xs text-gray-700 whitespace-pre-wrap">工事名、○○邸新築工事
+担当者、○○
+イニシャル、T
+着工日、2026/02/20
+施工者、○○建設</pre>
+                                  <p class="text-xs text-gray-500 mt-1">※「着工日」の代わりに「完了日」も使えます</p>
                               </div>
                           </div>
                       </div>
@@ -2015,7 +2044,11 @@
                 <input v-model="chatInput" @keydown.enter="!$event.isComposing && !isChatThinking && sendChatMessage()" :disabled="isChatThinking"
                        class="flex-1 border border-gray-300 p-2 rounded text-xs focus:outline-none focus:border-purple-500"
                        placeholder="例: 見積書PDFの出し方は？">
-                <button @click="sendChatMessage" :disabled="isChatThinking || !chatInput"
+                <button v-if="isChatThinking" @click="abortAiThinking"
+                        class="bg-red-500 text-white px-3 py-1 rounded shadow hover:bg-red-600 transition-colors" title="中断">
+                  <span class="material-icons text-sm">stop</span>
+                </button>
+                <button v-else @click="sendChatMessage" :disabled="!chatInput"
                         class="bg-purple-600 text-white px-3 py-1 rounded shadow hover:bg-purple-700 disabled:opacity-50 transition-colors">
                   <span class="material-icons text-sm">send</span>
                 </button>
@@ -2049,10 +2082,29 @@
                     <div v-if="msg.applied" class="text-xs text-green-700 font-bold flex items-center gap-1"><span class="material-icons text-[14px]">check_circle</span>適用済み（「元に戻す」で復元可能）</div>
                     <div v-else-if="msg.cancelled" class="text-xs text-gray-500">キャンセル済み</div>
                     <div v-else class="flex gap-2">
-                      <button @click="applyAiActions()" class="bg-orange-500 text-white px-3 py-1 rounded text-xs font-bold hover:bg-orange-600 shadow transition-colors flex items-center gap-1">
+                      <button @click="applyAiActions()" :disabled="isAiAssistantThinking" class="bg-orange-500 text-white px-3 py-1 rounded text-xs font-bold hover:bg-orange-600 shadow transition-colors flex items-center gap-1 disabled:opacity-50">
                         <span class="material-icons text-[14px]">check</span>適用
                       </button>
                       <button @click="cancelAiAction()" class="bg-gray-200 text-gray-700 px-3 py-1 rounded text-xs hover:bg-gray-300 transition-colors">キャンセル</button>
+                    </div>
+                  </div>
+                </div>
+                <!-- 候補選択カード -->
+                <div v-else-if="msg.role==='candidates'" class="text-left">
+                  <div class="inline-block px-3 py-2 rounded-lg max-w-[95%] bg-blue-50 border border-blue-300 shadow-sm">
+                    <span class="font-bold text-orange-600 block mb-1 text-[10px]">操作AI</span>
+                    <div class="text-sm mb-2 whitespace-pre-wrap">{{ msg.text }}</div>
+                    <div v-if="!msg.selected" class="space-y-1">
+                      <button v-for="c in msg.candidates" :key="c.id"
+                              @click="selectAiCandidate(msg, c)"
+                              :disabled="isAiAssistantThinking"
+                              class="block w-full text-left px-3 py-2 rounded border border-blue-200 bg-white hover:bg-blue-100 text-xs transition-colors disabled:opacity-50">
+                        <span class="font-bold">{{ c.project }}</span>
+                        <span class="text-gray-500 ml-2">{{ c.client }} / {{ c.date }}</span>
+                      </button>
+                    </div>
+                    <div v-else class="text-xs text-green-700 font-bold flex items-center gap-1">
+                      <span class="material-icons text-[14px]">check_circle</span>「{{ msg.selected }}」を選択しました
                     </div>
                   </div>
                 </div>
@@ -2066,7 +2118,11 @@
                 <input v-model="aiAssistantInput" @keydown.enter="!$event.isComposing && !isAiAssistantThinking && sendAiAssistantMessage()" :disabled="isAiAssistantThinking"
                        class="flex-1 border border-gray-300 p-2 rounded text-xs focus:outline-none focus:border-orange-500"
                        :placeholder="aiAssistantPlaceholder">
-                <button @click="sendAiAssistantMessage" :disabled="isAiAssistantThinking || !aiAssistantInput"
+                <button v-if="isAiAssistantThinking" @click="abortAiThinking"
+                        class="bg-red-500 text-white px-3 py-1 rounded shadow hover:bg-red-600 transition-colors" title="中断">
+                  <span class="material-icons text-sm">stop</span>
+                </button>
+                <button v-else @click="sendAiAssistantMessage" :disabled="!aiAssistantInput"
                         class="bg-orange-500 text-white px-3 py-1 rounded shadow hover:bg-orange-600 disabled:opacity-50 transition-colors">
                   <span class="material-icons text-sm">send</span>
                 </button>
@@ -2633,13 +2689,18 @@ window.__script2Ran = true;
           setup() {
             const loading = ref(true); 
             const loadingMessage = ref("読込中"); 
-            const currentTab = ref("menu"); 
+            const currentTab = ref(sessionStorage.getItem('currentTab') || "menu");
             const userEmail = ref(""); 
             const auth = reactive({ isAdmin: false }); 
             const masters = reactive({ clients: [], sets: [], vendors: [] });
             const projects = ref([]); 
             const orders = ref([]); 
-            const adminInvoices = ref([]); 
+            const adminInvoices = ref([]);
+            const invoiceStatusFilter = ref('');
+            const filteredInvoices = computed(() => {
+                if (!invoiceStatusFilter.value) return adminInvoices.value;
+                return adminInvoices.value.filter(inv => inv.status === invoiceStatusFilter.value);
+            });
             const isReviewMode = ref(false);
             const isOrderPanelLoading = ref(false); // 発注書履歴パネルのローディング状態
             const showBackButton = ref(false);
@@ -3129,6 +3190,7 @@ window.__script2Ran = true;
                 { role: 'ai', text: 'こんにちは!\nシステムの操作方法や、コードの仕組みについて何でも聞いてください。' }
             ]);
             const isChatThinking = ref(false);
+            let chatRequestId = 0; // システム解説の中断用リクエストID
 
             // --- AI操作アシスタント用データ ---
             const chatMode = ref('help'); // 'help' | 'action'
@@ -3138,6 +3200,7 @@ window.__script2Ran = true;
             const aiAssistantInput = ref('');
             const isAiAssistantThinking = ref(false);
             const aiPendingActions = ref(null); // { actions, summary, confidence }
+            let aiAssistantRequestId = 0; // 操作アシスタントの中断用リクエストID
 
             // --- チャットボット ドラッグ位置管理 ---
             const chatPosX = ref(null);
@@ -3886,6 +3949,7 @@ window.__script2Ran = true;
             };
 
             // Watch for changes（行追加/削除のみ監視。セル編集は tbody @input.capture で検知）
+            watch(currentTab, (tab) => { try { sessionStorage.setItem('currentTab', tab); } catch(e) {} });
             watch(() => form.items.length, () => { isDirty.value = true; });
             watch(() => JSON.stringify(form.header), () => { isDirty.value = true; });
 
@@ -3992,12 +4056,22 @@ window.__script2Ran = true;
                   masters.clients = m.clients; masters.sets = m.sets; masters.vendors = m.vendors;
                   try { materialPrices.value = JSON.parse(materialJson); } catch(e) { /* ignore */ }
                   
-                  currentTab.value = 'menu';
+                  // セッション保持: リロード前のタブを復元（なければメニュー）
+                  const savedTab = sessionStorage.getItem('currentTab');
+                  if (savedTab && ['menu','list','edit','admin','invoice','order','dedicated_order'].includes(savedTab)) {
+                    currentTab.value = savedTab;
+                  } else {
+                    currentTab.value = 'menu';
+                  }
                   // リマインド取得（非同期、画面表示をブロックしない）
                   fetchReminders();
                   // 履歴用データをバックグラウンドでプリフェッチ
                   fetchProjects(true).catch(() => {});
                   fetchOrders().catch(() => {});
+                  // 復元タブに応じたデータ取得
+                  if (currentTab.value === 'invoice') { loadInvoiceFiles().catch(() => {}); fetchInvoices().catch(() => {}); }
+                  if (currentTab.value === 'admin') { fetchInvoices().catch(() => {}); fetchProjects(true, true).catch(() => {}); }
+                  if (currentTab.value === 'list') { fetchProjects(true, true).catch(() => {}); fetchOrders(true).catch(() => {}); fetchInvoices().catch(() => {}); }
               } catch(e) {
                   window.showCriticalError("Initialization Error:\n" + e.message); 
               } 
@@ -5436,6 +5510,7 @@ window.__script2Ran = true;
                 chatMessages.value.push({ role: 'user', text: text });
                 chatInput.value = "";
                 isChatThinking.value = true;
+                const myRequestId = ++chatRequestId;
 
                 // 最下部へスクロール
                 await nextTick();
@@ -5445,18 +5520,22 @@ window.__script2Ran = true;
                 try {
                     // GAS (コード.js) の apiChatWithSystemBot を呼び出し
                     const resJson = await gas('apiChatWithSystemBot', text, screenContext);
+                    if (myRequestId !== chatRequestId) return; // 中断済み
                     const res = JSON.parse(resJson);
-                    
+
                     if (res.error) {
                         chatMessages.value.push({ role: 'ai', text: "エラーが発生しました:\n" + res.error });
                     } else {
                         chatMessages.value.push({ role: 'ai', text: res.reply });
                     }
                 } catch (e) {
+                    if (myRequestId !== chatRequestId) return; // 中断済み
                     console.error(e);
                     chatMessages.value.push({ role: 'ai', text: "通信エラーが発生しました。ネットワークを確認してください。" });
                 } finally {
-                    isChatThinking.value = false;
+                    if (myRequestId === chatRequestId) {
+                        isChatThinking.value = false;
+                    }
                     await nextTick();
                     if(container) container.scrollTop = container.scrollHeight;
                 }
@@ -5503,48 +5582,53 @@ window.__script2Ran = true;
 
             const generateAiPreview = (actions) => {
                 const lines = [];
-                for (const act of actions) {
+                const multi = actions.length > 1;
+                for (let idx = 0; idx < actions.length; idx++) {
+                    const act = actions[idx];
+                    const p = multi ? `[${idx + 1}/${actions.length}] ` : '';
                     if (act.type === 'update_item') {
                         const matched = filterItems(act.filter);
                         if (act.changes) {
                             const chFields = Object.entries(act.changes).filter(([k,v]) => v !== undefined && v !== '').map(([k,v]) => `${FIELD_LABELS[k]||k}→「${v}」`).join(', ');
-                            lines.push(`明細 ${matched.length}件: ${chFields}`);
+                            lines.push(`${p}明細 ${matched.length}件: ${chFields}`);
                         }
                         if (act.modifier) {
                             const opLabel = act.modifier.operation === 'multiply' ? '×' : act.modifier.operation === 'add' ? '+' : '=';
-                            lines.push(`明細 ${matched.length}件: ${FIELD_LABELS[act.modifier.field]||act.modifier.field} ${opLabel}${act.modifier.value}`);
+                            lines.push(`${p}明細 ${matched.length}件: ${FIELD_LABELS[act.modifier.field]||act.modifier.field} ${opLabel}${act.modifier.value}`);
                         }
                     } else if (act.type === 'update_header') {
                         const chFields = Object.entries(act.changes || {}).filter(([k,v]) => v !== undefined && v !== '').map(([k,v]) => `${FIELD_LABELS[k]||k}→「${v}」`).join(', ');
-                        lines.push(`ヘッダー: ${chFields}`);
+                        lines.push(`${p}ヘッダー: ${chFields}`);
                     } else if (act.type === 'add_item') {
-                        lines.push(`追加: ${act.newItem?.product || '品目'}`);
+                        lines.push(`${p}追加: ${act.newItem?.product || '品目'}`);
                     } else if (act.type === 'remove_item') {
                         const matched = filterItems(act.filter);
-                        lines.push(`削除: ${matched.length}件`);
-                    // 発注アクション
+                        lines.push(`${p}削除: ${matched.length}件`);
                     } else if (act.type === 'update_order_item') {
                         const matched = filterOrderItems(act.filter);
                         if (act.changes) {
                             const chFields = Object.entries(act.changes).filter(([k,v]) => v !== undefined && v !== '').map(([k,v]) => `${FIELD_LABELS[k]||k}→「${v}」`).join(', ');
-                            lines.push(`発注明細 ${matched.length}件: ${chFields}`);
+                            lines.push(`${p}発注明細 ${matched.length}件: ${chFields}`);
                         }
                         if (act.modifier) {
                             const opLabel = act.modifier.operation === 'multiply' ? '×' : act.modifier.operation === 'add' ? '+' : '=';
-                            lines.push(`発注明細 ${matched.length}件: ${FIELD_LABELS[act.modifier.field]||act.modifier.field} ${opLabel}${act.modifier.value}`);
+                            lines.push(`${p}発注明細 ${matched.length}件: ${FIELD_LABELS[act.modifier.field]||act.modifier.field} ${opLabel}${act.modifier.value}`);
                         }
                     } else if (act.type === 'update_order_header') {
                         const chFields = Object.entries(act.changes || {}).filter(([k,v]) => v !== undefined && v !== '').map(([k,v]) => `${FIELD_LABELS[k]||k}→「${v}」`).join(', ');
-                        lines.push(`発注ヘッダー: ${chFields}`);
+                        lines.push(`${p}発注ヘッダー: ${chFields}`);
                     } else if (act.type === 'add_order_item') {
-                        lines.push(`発注追加: ${act.newItem?.product || '品目'}`);
+                        lines.push(`${p}発注追加: ${act.newItem?.product || '品目'}`);
                     } else if (act.type === 'remove_order_item') {
                         const matched = filterOrderItems(act.filter);
-                        lines.push(`発注削除: ${matched.length}件`);
-                    // 請求書アクション
+                        lines.push(`${p}発注削除: ${matched.length}件`);
                     } else if (act.type === 'update_invoice') {
                         const chFields = Object.entries(act.changes || {}).filter(([k,v]) => v !== undefined && v !== '').map(([k,v]) => `${FIELD_LABELS[k]||k}→「${v}」`).join(', ');
-                        lines.push(`請求書: ${chFields}`);
+                        lines.push(`${p}請求書: ${chFields}`);
+                    } else if (act.type === 'load_estimate') {
+                        lines.push(`${p}見積読込: 工事名「${act.projectName || ''}」を検索して読み込み`);
+                    } else if (act.type === 'create_pdf') {
+                        lines.push(`${p}見積PDF作成: 保存してPDFを生成`);
                     }
                 }
                 return lines.join('\n');
@@ -5646,13 +5730,19 @@ window.__script2Ran = true;
             // 画面とアクションの整合性バリデーション
             const validateActionsForScreen = (actions, screen) => {
                 const screenActions = {
-                    edit: ['update_item', 'update_header', 'add_item', 'remove_item', 'navigate'],
-                    dedicated_order: ['update_order_item', 'update_order_header', 'add_order_item', 'remove_order_item', 'navigate'],
-                    invoice: ['update_invoice', 'navigate'],
-                    menu: ['navigate'], list: ['navigate'], admin: ['navigate']
+                    edit: ['update_item', 'update_header', 'add_item', 'remove_item', 'navigate', 'load_estimate', 'create_pdf'],
+                    dedicated_order: ['update_order_item', 'update_order_header', 'add_order_item', 'remove_order_item', 'navigate', 'load_estimate'],
+                    invoice: ['update_invoice', 'navigate', 'load_estimate'],
+                    menu: ['navigate', 'load_estimate'], list: ['navigate', 'load_estimate'], admin: ['navigate', 'load_estimate']
                 };
-                const allowed = screenActions[screen] || ['navigate'];
-                return actions.filter(a => allowed.includes(a.type));
+                // load_estimate以降のアクションはedit画面の権限で検証
+                let hasLoadEstimate = false;
+                return actions.filter(a => {
+                    if (a.type === 'load_estimate') { hasLoadEstimate = true; return true; }
+                    const effectiveScreen = hasLoadEstimate ? 'edit' : screen;
+                    const allowed = screenActions[effectiveScreen] || ['navigate', 'load_estimate'];
+                    return allowed.includes(a.type);
+                });
             };
 
             // ナビゲーション処理
@@ -5689,6 +5779,7 @@ window.__script2Ran = true;
                 aiAssistantInput.value = '';
                 isAiAssistantThinking.value = true;
                 aiAssistantLoadingText.value = 'AI分析中...';
+                const myRequestId = ++aiAssistantRequestId;
 
                 await nextTick();
                 const container = document.getElementById('ai-assistant-history');
@@ -5716,6 +5807,7 @@ window.__script2Ran = true;
                     ctx.history = recentMsgs.map(m => ({ role: m.role, text: m.text ? m.text.substring(0, 200) : '' }));
 
                     const resJson = await gas('apiAiAssistantUnified', text, JSON.stringify(ctx));
+                    if (myRequestId !== aiAssistantRequestId) return; // 中断済み
                     const res = JSON.parse(resJson);
 
                     if (res.error) {
@@ -5743,42 +5835,180 @@ window.__script2Ran = true;
                         aiAssistantMessages.value.push({ role: 'ai', text: res.summary || '操作対象が見つかりませんでした。' });
                     }
                 } catch (e) {
+                    if (myRequestId !== aiAssistantRequestId) return; // 中断済み
                     console.error(e);
                     aiAssistantMessages.value.push({ role: 'ai', text: '通信エラーが発生しました。' });
                 } finally {
-                    isAiAssistantThinking.value = false;
-                    aiAssistantLoadingText.value = 'AI分析中...';
+                    if (myRequestId === aiAssistantRequestId) {
+                        isAiAssistantThinking.value = false;
+                        aiAssistantLoadingText.value = 'AI分析中...';
+                    }
                     await nextTick();
                     if (container) container.scrollTop = container.scrollHeight;
                 }
             };
 
-            const applyAiActions = () => {
+            // 単一アクション実行ヘルパー（見積編集系）。戻り値: { count, pdfUrl }
+            const executeSingleEditActionAsync = async (act) => {
+                let count = 0;
+                let pdfUrl = null;
+                if (act.type === 'load_estimate') {
+                    await fetchProjects(true);
+                    const keyword = act.projectName || '';
+                    let found = projects.value.find(p => p.project === keyword);
+                    if (!found) found = projects.value.find(p => String(p.project || '').includes(keyword));
+                    if (!found) {
+                        // 候補検索: 部分一致で最大5件
+                        const candidates = projects.value
+                            .filter(p => { const pj = String(p.project || ''); return keyword.length >= 2 && keyword.split('').filter(ch => pj.includes(ch)).length >= Math.ceil(keyword.length * 0.5); })
+                            .slice(0, 5)
+                            .map(p => ({ id: p.id, project: p.project, client: p.client, date: p.date }));
+                        const err = new Error(`工事名「${keyword}」に一致する見積が見つかりません`);
+                        err.candidates = candidates;
+                        throw err;
+                    }
+                    await loadEstimate(found.id);
+                    count++;
+                } else if (act.type === 'create_pdf') {
+                    const res = await gas('apiSaveAndCreateEstimatePdf', JSON.stringify(form));
+                    const r = JSON.parse(res);
+                    if (r.success) {
+                        form.header.id = r.id;
+                        isDirty.value = false;
+                        _upsertProjectLocal(r.id, form.header, form.items);
+                        pdfUrl = r.url;
+                        count++;
+                        fetchProjects(true, true).catch(() => {});
+                        fetchOrders(true).catch(() => {});
+                    } else {
+                        throw new Error(r.message || 'PDF作成に失敗しました');
+                    }
+                } else if (act.type === 'update_header') {
+                    for (const [k, v] of Object.entries(act.changes || {})) {
+                        if (ALLOWED_HEADER_FIELDS.includes(k) && v !== undefined && v !== '') { form.header[k] = v; count++; }
+                    }
+                } else if (act.type === 'update_item') {
+                    const matched = filterItems(act.filter);
+                    for (const { item } of matched) {
+                        if (act.changes) {
+                            for (const [k, v] of Object.entries(act.changes)) {
+                                if (ALLOWED_ITEM_FIELDS.includes(k) && v !== undefined && v !== '') { item[k] = v; count++; }
+                            }
+                        }
+                        if (act.modifier && ALLOWED_ITEM_FIELDS.includes(act.modifier.field)) {
+                            const cur = Number(item[act.modifier.field]) || 0;
+                            if (act.modifier.operation === 'multiply') item[act.modifier.field] = Math.round(cur * act.modifier.value);
+                            else if (act.modifier.operation === 'add') item[act.modifier.field] = Math.round(cur + act.modifier.value);
+                            else if (act.modifier.operation === 'set') item[act.modifier.field] = act.modifier.value;
+                            count++;
+                        }
+                        calcLine(item);
+                    }
+                } else if (act.type === 'add_item') {
+                    const ni = act.newItem || {};
+                    const newRow = { _uid: genUid(), category: ni.category||'', product: ni.product||'', spec: ni.spec||'', qty: ni.qty||0, unit: ni.unit||'', price: ni.price||0, cost: ni.cost||0, vendor: ni.vendor||'', amount: 0, orderedQty: '', orderedAmount: 0, selected: false, remarks: '' };
+                    calcLine(newRow);
+                    form.items.push(newRow);
+                    count++;
+                } else if (act.type === 'remove_item') {
+                    const matched = filterItems(act.filter);
+                    const indices = matched.map(m => m.index).sort((a,b) => b - a);
+                    for (const idx of indices) { form.items.splice(idx, 1); count++; }
+                }
+                return { count, pdfUrl };
+            };
+
+            // ステップ進行テキスト生成
+            const getStepLabel = (idx, total, act) => {
+                const base = total > 1 ? `(${idx + 1}/${total}) ` : '';
+                if (act.type === 'load_estimate') return base + `見積「${act.projectName || ''}」を検索中...`;
+                if (act.type === 'create_pdf') return base + 'PDF作成中...';
+                if (act.type === 'update_header') return base + 'ヘッダー更新中...';
+                if (act.type === 'update_item') return base + '明細更新中...';
+                if (act.type === 'add_item') return base + '明細追加中...';
+                if (act.type === 'remove_item') return base + '明細削除中...';
+                return base + '実行中...';
+            };
+
+            const applyAiActions = async () => {
                 if (!aiPendingActions.value) return;
                 const actions = aiPendingActions.value.actions || [];
-                const hasOrderActions = actions.some(a => (a.type && a.type.startsWith('update_order')) || a.type === 'add_order_item' || a.type === 'remove_order_item');
-                const hasInvoiceActions = actions.some(a => a.type === 'update_invoice');
-                let count = 0;
+                const hasAsyncActions = actions.some(a => a.type === 'load_estimate' || a.type === 'create_pdf');
 
-                if (hasOrderActions) {
-                    // 発注フォームのスナップショット
-                    formSnapshot.value = { source: 'dedicated_order', header: JSON.parse(JSON.stringify(dedicatedOrderForm.header)), items: JSON.parse(JSON.stringify(dedicatedOrderForm.items)) };
-                    count = executeAiOrderActions(actions);
-                } else if (hasInvoiceActions) {
-                    // 請求書フォームのスナップショット
-                    formSnapshot.value = { source: 'invoice', data: JSON.parse(JSON.stringify(invoiceForm)) };
-                    count = executeAiInvoiceActions(actions);
+                if (hasAsyncActions) {
+                    // 複合操作: 非同期アクションを含む場合は逐次実行
+                    isAiAssistantThinking.value = true;
+                    const totalSteps = actions.length;
+                    aiAssistantLoadingText.value = `操作を実行中... (0/${totalSteps})`;
+                    let count = 0;
+                    let pdfUrl = null;
+                    try {
+                        for (let i = 0; i < actions.length; i++) {
+                            const act = actions[i];
+                            aiAssistantLoadingText.value = getStepLabel(i, totalSteps, act);
+                            try {
+                                const result = await executeSingleEditActionAsync(act);
+                                count += result.count;
+                                if (result.pdfUrl) pdfUrl = result.pdfUrl;
+                            } catch (e) {
+                                // load_estimate失敗時に候補があれば提示
+                                if (e.candidates && e.candidates.length > 0) {
+                                    const candidateText = `工事名「${act.projectName || ''}」に完全一致する見積が見つかりませんでした。\n以下の候補から選択してください:`;
+                                    aiAssistantMessages.value.push({
+                                        role: 'candidates',
+                                        text: candidateText,
+                                        candidates: e.candidates,
+                                        originalActions: actions.slice(i + 1)
+                                    });
+                                    aiPendingActions.value = null;
+                                    const lastPreview = [...aiAssistantMessages.value].reverse().find(m => m.role === 'preview');
+                                    if (lastPreview) lastPreview.cancelled = true;
+                                    return;
+                                }
+                                throw e;
+                            }
+                        }
+                        isDirty.value = true;
+                        const lastPreview = [...aiAssistantMessages.value].reverse().find(m => m.role === 'preview');
+                        if (lastPreview) lastPreview.applied = true;
+                        aiPendingActions.value = null;
+                        if (pdfUrl) {
+                            openUrl(pdfUrl);
+                            aiAssistantMessages.value.push({ role: 'ai', text: `複合操作を完了しました (${count}件変更)\nPDF: ${pdfUrl}` });
+                            isDirty.value = false;
+                        } else {
+                            notify(`AI操作を適用しました (${count}件変更)`);
+                        }
+                    } catch (e) {
+                        console.error('applyAiActions: エラー発生:', e);
+                        notify('操作エラー: ' + (e.message || e), 'error');
+                        aiAssistantMessages.value.push({ role: 'ai', text: '操作中にエラー: ' + (e.message || e) });
+                    } finally {
+                        isAiAssistantThinking.value = false;
+                        aiAssistantLoadingText.value = 'AI分析中...';
+                    }
                 } else {
-                    // 見積フォームのスナップショット（既存）
-                    formSnapshot.value = { source: 'edit', header: JSON.parse(JSON.stringify(form.header)), items: JSON.parse(JSON.stringify(form.items)) };
-                    count = executeAiActions(actions);
+                    // 既存の同期処理パス
+                    const hasOrderActions = actions.some(a => (a.type && a.type.startsWith('update_order')) || a.type === 'add_order_item' || a.type === 'remove_order_item');
+                    const hasInvoiceActions = actions.some(a => a.type === 'update_invoice');
+                    let count = 0;
+
+                    if (hasOrderActions) {
+                        formSnapshot.value = { source: 'dedicated_order', header: JSON.parse(JSON.stringify(dedicatedOrderForm.header)), items: JSON.parse(JSON.stringify(dedicatedOrderForm.items)) };
+                        count = executeAiOrderActions(actions);
+                    } else if (hasInvoiceActions) {
+                        formSnapshot.value = { source: 'invoice', data: JSON.parse(JSON.stringify(invoiceForm)) };
+                        count = executeAiInvoiceActions(actions);
+                    } else {
+                        formSnapshot.value = { source: 'edit', header: JSON.parse(JSON.stringify(form.header)), items: JSON.parse(JSON.stringify(form.items)) };
+                        count = executeAiActions(actions);
+                    }
+                    isDirty.value = true;
+                    const lastPreview = [...aiAssistantMessages.value].reverse().find(m => m.role === 'preview');
+                    if (lastPreview) lastPreview.applied = true;
+                    aiPendingActions.value = null;
+                    notify(`AI操作を適用しました (${count}件変更)`);
                 }
-                isDirty.value = true;
-                // プレビューメッセージを適用済みに更新
-                const lastPreview = [...aiAssistantMessages.value].reverse().find(m => m.role === 'preview');
-                if (lastPreview) lastPreview.applied = true;
-                aiPendingActions.value = null;
-                notify(`AI操作を適用しました (${count}件変更)`);
             };
 
             const cancelAiAction = () => {
@@ -5786,6 +6016,59 @@ window.__script2Ran = true;
                 if (lastPreview) lastPreview.cancelled = true;
                 aiPendingActions.value = null;
                 notify('操作をキャンセルしました', 'info');
+            };
+
+            // AI分析を中断する
+            const abortAiThinking = () => {
+                if (chatMode.value === 'help' && isChatThinking.value) {
+                    chatRequestId++;
+                    isChatThinking.value = false;
+                    chatMessages.value.push({ role: 'ai', text: '(中断しました)' });
+                } else if (chatMode.value === 'action' && isAiAssistantThinking.value) {
+                    aiAssistantRequestId++;
+                    isAiAssistantThinking.value = false;
+                    aiAssistantLoadingText.value = 'AI分析中...';
+                    aiAssistantMessages.value.push({ role: 'ai', text: '(中断しました)' });
+                }
+            };
+
+            // 候補選択後に見積を読み込み、残りのアクションを続行
+            const selectAiCandidate = async (candidateMsg, candidate) => {
+                candidateMsg.selected = candidate.project;
+                isAiAssistantThinking.value = true;
+                aiAssistantLoadingText.value = `見積「${candidate.project}」を読み込み中...`;
+                try {
+                    await loadEstimate(candidate.id);
+                    const remainingActions = candidateMsg.originalActions || [];
+                    if (remainingActions.length > 0) {
+                        let count = 0;
+                        let pdfUrl = null;
+                        const total = remainingActions.length;
+                        for (let i = 0; i < remainingActions.length; i++) {
+                            const act = remainingActions[i];
+                            aiAssistantLoadingText.value = getStepLabel(i, total, act);
+                            const result = await executeSingleEditActionAsync(act);
+                            count += result.count;
+                            if (result.pdfUrl) pdfUrl = result.pdfUrl;
+                        }
+                        isDirty.value = true;
+                        if (pdfUrl) {
+                            openUrl(pdfUrl);
+                            aiAssistantMessages.value.push({ role: 'ai', text: `操作を完了しました (${count}件変更)\nPDF: ${pdfUrl}` });
+                            isDirty.value = false;
+                        } else if (count > 0) {
+                            notify(`AI操作を適用しました (${count}件変更)`);
+                        }
+                    } else {
+                        notify('見積を読み込みました');
+                    }
+                } catch (e) {
+                    console.error('selectAiCandidate: エラー発生:', e);
+                    aiAssistantMessages.value.push({ role: 'ai', text: '操作中にエラー: ' + (e.message || e) });
+                } finally {
+                    isAiAssistantThinking.value = false;
+                    aiAssistantLoadingText.value = 'AI分析中...';
+                }
             };
 
             return {
@@ -5803,7 +6086,7 @@ window.__script2Ran = true;
                 showDraftModal, drafts, isDraftLoading, estimateCandidates,
                 showVendorSelectModal, vendorCandidates, vendorSplitPreview,
                 assistantBtnVisible, assistantCtxMenu, openAssistantCtxMenu, setAssistantBtnVisible,
-                showChatBot, chatInput, chatMessages, isChatThinking, sendChatMessage, chatMode, aiAssistantInput, aiAssistantMessages, isAiAssistantThinking, aiAssistantLoadingText, aiAssistantPlaceholder, sendAiAssistantMessage, applyAiActions, cancelAiAction, aiPendingActions, handleAiNavigation,
+                showChatBot, chatInput, chatMessages, isChatThinking, sendChatMessage, chatMode, aiAssistantInput, aiAssistantMessages, isAiAssistantThinking, aiAssistantLoadingText, aiAssistantPlaceholder, sendAiAssistantMessage, applyAiActions, cancelAiAction, selectAiCandidate, abortAiThinking, aiPendingActions, handleAiNavigation,
                 chatPosX, chatPosY, isDragging, onChatDragStart, onChatBtnClick,
                 floatingPanel, floatingPanelPosX, floatingPanelPosY, isFloatingPanelDragging, onFloatingPanelDragStart, openFloatingEstimatePanel, openFloatingPanelList, selectFloatingPanelItem, quickApplyFloatingPanelItem, floatingPanelBack, closeFloatingPanel, toggleFloatingPanelSelectAll, addFloatingPanelItems, applyFloatingPanelHeader, floatingPanelCheckedCount, floatingPanelFilteredList,
                 sidePanelMode, orderInPanel, toggleSidePanel, closeSidePanel, handleEstimateRowClick, saveOrderPanelToEstimate, currentEstimateOrders, reprintOrderPdf, openOrderForEdit,
@@ -5827,7 +6110,7 @@ window.__script2Ran = true;
                 clearEstimateForm, createNewEstimate, openEstimateHistoryFromMenu, openOrderHistoryFromMenu, loadEstimate, saveEstimate, createPdf, createOrderPdf, selectVendorAndPrint,
                 addItem, calcLine, totalAmount, totalEstimatedCost, calculateMargin, predictPrice, bulkPriceTarget, bulkPricePercent, applyBulkPriceChange, getPricePct, getCostPct,
                 showSuggestions, hideSuggestions, applySuggestion, onClientInput, 
-                selectInvoiceFile, resetInvoiceForm, checkOrderBalance, onProjectSelect, registerInvoice, editInvoice, updateInvoiceStatus, deleteItem,
+                selectInvoiceFile, resetInvoiceForm, checkOrderBalance, onProjectSelect, registerInvoice, editInvoice, updateInvoiceStatus, deleteItem, invoiceStatusFilter, filteredInvoices,
                 openLedger, createLedgerPdf, loadAnalysis, openDraftModal, selectDraft, openOcrModal, toggleFileSelection, executeOcrScan, handleOcrFileSelect, handleOcrDrop, applyOcrResults,
                 showPreview, downloadJournalCsv, confirmAction, handleConfirm,
                 checkUnsavedChanges, handleSaveAndMove

@@ -171,7 +171,7 @@ const KANJI_ROMAJI_ = {
   '佐':'S','斉':'S','斎':'S','坂':'S','桜':'S','笹':'S','沢':'S','澤':'S','塩':'S','柴':'S','島':'S','嶋':'S','清':'S','白':'S','新':'S','進':'S','杉':'S','鈴':'S','須':'S','関':'S','瀬':'S',
   '高':'T','竹':'T','田':'T','谷':'T','丹':'T','千':'T','塚':'T','土':'T','鶴':'T','寺':'T','天':'T','東':'T','徳':'T','富':'T','豊':'T',
   '中':'N','永':'N','長':'N','西':'N','二':'N','野':'N','能':'N',
-  '橋':'H','畑':'H','浜':'H','濱':'H','林':'H','原':'H','春':'H','樋':'H','久':'H','平':'H','広':'H','廣':'H','福':'F','藤':'F','船':'F','古':'F',
+  '橋':'H','畑':'H','浜':'H','濱':'H','林':'H','原':'H','春':'H','樋':'H','久':'H','平':'H','広':'H','廣':'H','蜂':'H','長谷':'H','羽':'H','花':'H','福':'F','藤':'F','船':'F','古':'F',
   '前':'M','牧':'M','松':'M','丸':'M','三':'M','水':'M','溝':'M','南':'M','宮':'M','村':'M','森':'M','諸':'M',
   '八':'Y','山':'Y','矢':'Y','柳':'Y','横':'Y','吉':'Y','米':'Y',
   '若':'W','渡':'W','和':'W',
@@ -244,7 +244,7 @@ function resolveConstructionId_(data) {
   if (!initial) {
     initial = guessInitialFromName_(personName) || getVendorInitial_(personName);
   }
-  if (!initial) return '';
+  if (!initial) initial = 'X';
   // 新規採番
   const seqNo = getNextInvoiceFileNo_(initial);
   return initial + seqNo;
@@ -259,15 +259,19 @@ function apiAutoCompleteOnKanryo_(projectName, personName, contractorName) {
   if (!sheet || sheet.getLastRow() < 2) return { updated: 0, ids: [] };
   const data = sheet.getDataRange().getValues();
   const updatedIds = [];
+  const pj = (projectName || '').trim();
+  const ps = (personName || '').trim();
+  const ct = (contractorName || '').trim();
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
     const rowProject = String(row[5]).trim();
     const rowPerson = String(row[6]).trim();
     const rowContractor = String(row[14] || '').trim();
-    if (rowProject === projectName.trim() &&
-        rowPerson === personName.trim() &&
-        rowContractor === contractorName.trim() &&
-        String(row[1]) !== '完了') {
+    const status = String(row[1]);
+    if (status === '完了' || status === '支払済') continue;
+    // 工事名＋担当者は必須一致、施工者は指定時のみチェック
+    if (rowProject === pj && rowPerson === ps &&
+        (!ct || !rowContractor || rowContractor === ct)) {
       sheet.getRange(i + 1, 2).setValue('完了');
       updatedIds.push(String(row[0]));
     }
@@ -497,7 +501,7 @@ function processLineEvent_(event) {
         existing.push(userId);
         PropertiesService.getScriptProperties().setProperty('LINE_USER_IDS', existing.join(','));
       }
-      sendLineReply_(event.replyToken, 'AI建築見積システムと連携しました。\nメッセージを送信すると工事データとして受け付けます。\n\n【入力フォーマット例】\n工事名、○○邸新築工事\n担当者、○○\n着工日、2026/02/20\n施工者、○○建設\n内容、外壁塗装工事');
+      sendLineReply_(event.replyToken, 'AI建築見積システムと連携しました。\nメッセージを送信すると工事データとして受け付けます。\n\n【入力フォーマット例】\n工事名、○○邸新築工事\n担当者、○○\nイニシャル、T\n着工日、2026/02/20\n施工者、○○建設\n\n※「着工日」の代わりに「完了日」も使えます');
     }
     return;
   }
@@ -511,11 +515,28 @@ function processLineEvent_(event) {
 
     const parsed = parseLineMessage_(text);
     if (!parsed || !parsed.person) {
-      sendLineReply_(event.replyToken, '内容を解析できませんでした。\n以下のフォーマットで送信してください:\n\n工事名、○○邸新築工事\n担当者、○○\n着工日、2026/02/20\n施工者、○○建設\n内容、外壁塗装工事');
+      sendLineReply_(event.replyToken, '内容を解析できませんでした。\n以下のフォーマットで送信してください:\n\n工事名、○○邸新築工事\n担当者、○○\nイニシャル、T\n着工日、2026/02/20\n施工者、○○建設\n\n※「着工日」の代わりに「完了日」も使えます');
       return;
     }
 
-    // 請求書テキストファイルをDriveに作成
+    // === 完了通知の場合: ステータス更新のみ（ファイル作成・工事番号採番しない） ===
+    if (parsed.detectedKanryo && parsed.project && parsed.person) {
+      const result = apiAutoCompleteOnKanryo_(parsed.project, parsed.person, parsed.contractor || '');
+      let reply = '';
+      if (result.updated > 0) {
+        reply += '【完了処理】' + result.updated + '件のレコードを「完了」に更新しました。\n\n';
+      } else {
+        reply += '完了対象の着工中レコードが見つかりませんでした。\n工事名・担当者が登録済みデータと一致しているか確認してください。\n\n';
+      }
+      if (parsed.project) reply += '工事名: ' + parsed.project + '\n';
+      if (parsed.person) reply += '担当者: ' + parsed.person + '\n';
+      if (parsed.contractor) reply += '施工者: ' + parsed.contractor + '\n';
+      if (parsed.date) reply += '完了日: ' + parsed.date + '\n';
+      sendLineReply_(event.replyToken, reply);
+      return;
+    }
+
+    // === 通常の工事データ登録 ===
     const folderId = CONFIG.invoiceInputFolder;
     if (!folderId) {
       sendLineReply_(event.replyToken, '請求書受取フォルダが未設定です。管理者に連絡してください。');
@@ -527,7 +548,15 @@ function processLineEvent_(event) {
     const projectName = (parsed.project || '').replace(/[\\/:*?"<>|]/g, '');
     const personName = (parsed.person || '').replace(/[\\/:*?"<>|]/g, '');
     const contractorName = (parsed.contractor || '').replace(/[\\/:*?"<>|]/g, '');
-    // 工事番号を自動解決（年度内同一工事名チェック含む）
+    // イニシャル未指定時は担当者名の漢字から推測（1文字）
+    const hadExplicitInitial = !!parsed.initial;
+    if (!parsed.initial && parsed.person) {
+      const inferred = guessInitialFromName_(parsed.person) || getVendorInitial_(parsed.person);
+      if (inferred) parsed.initial = inferred.charAt(0);
+    }
+    if (parsed.initial) parsed.initial = parsed.initial.charAt(0).toUpperCase();
+    if (!hadExplicitInitial && parsed.initial) parsed._initialInferred = true;
+    // 工事番号を必ず生成（年度内同一工事名チェック含む）
     if (!parsed.constructionId) {
       parsed.constructionId = resolveConstructionId_(parsed);
     }
@@ -542,15 +571,15 @@ function processLineEvent_(event) {
 
     // _parseTextInvoice() が読み取れる key: value 形式でファイル内容を生成
     let content = '';
-    if (parsed.constructionId) content += '工事番号: ' + parsed.constructionId + '\n';
-    if (parsed.person) content += '担当者: ' + parsed.person + '\n';
-    if (parsed.contractor) content += '施工者: ' + parsed.contractor + '\n';
+    content += '工事番号: ' + parsed.constructionId + '\n';
     if (parsed.project) content += '現場名: ' + parsed.project + '\n';
+    if (parsed.person) content += '担当者: ' + parsed.person + '\n';
+    content += 'イニシャル: ' + (parsed.initial || 'X') + '\n';
+    if (parsed.date) content += '着工日: ' + parsed.date + '\n';
+    if (parsed.contractor) content += '施工者: ' + parsed.contractor + '\n';
     if (parsed.content) content += '内容: ' + parsed.content + '\n';
     if (parsed.amount) content += '請求金額: ' + parsed.amount + '\n';
-    if (parsed.date) content += '着工日: ' + parsed.date + '\n';
     if (parsed.location) content += '工事場所: ' + parsed.location + '\n';
-    if (parsed.detectedKanryo) content += '完了\n';
 
     const folder = DriveApp.getFolderById(folderId);
     folder.createFile(fileName, content, MimeType.PLAIN_TEXT);
@@ -563,15 +592,15 @@ function processLineEvent_(event) {
 
     let reply = '工事データを受け付けました。\n';
     reply += 'Webアプリの請求書受取画面で確認・登録してください。\n\n';
-    if (parsed.constructionId) reply += '工事番号: ' + parsed.constructionId + '\n';
-    if (parsed.person) reply += '担当者: ' + parsed.person + '\n';
-    if (parsed.contractor) reply += '施工者: ' + parsed.contractor + '\n';
+    reply += '工事番号: ' + parsed.constructionId + '\n';
     if (parsed.project) reply += '工事名: ' + parsed.project + '\n';
+    if (parsed.person) reply += '担当者: ' + parsed.person + '\n';
+    reply += 'イニシャル: ' + (parsed.initial || 'X') + (parsed._initialInferred ? '（自動推測）' : '') + '\n';
+    if (parsed.date) reply += '着工日: ' + parsed.date + '\n';
+    if (parsed.contractor) reply += '施工者: ' + parsed.contractor + '\n';
     if (parsed.content) reply += '内容: ' + parsed.content + '\n';
     if (parsed.amount) reply += '金額: ' + Number(parsed.amount).toLocaleString() + '円\n';
-    if (parsed.date) reply += '着工日: ' + parsed.date + '\n';
     if (parsed.location) reply += '工事場所: ' + parsed.location + '\n';
-    if (parsed.detectedKanryo) reply += '※完了通知\n';
 
     sendLineReply_(event.replyToken, reply);
     return;
@@ -631,12 +660,12 @@ function parseStructuredMessage_(text) {
     person:         /(?:担当者|担当|請求元|業者名|会社名|企業名)[：:、,\s]*(.+)/,
     contractor:     /(?:施工者|施工業者|施工担当|作業者)[：:、,\s]*(.+)/,
     amount:         /(?:金額|請求金額|合計)[：:、,\s]*([0-9０-９,，]+)/,
-    date:           /(?:日付|着工日|請求日|発行日|開始日)[：:、,\s]*(.+)/,
+    date:           /(?:日付|着工日|施工日|完了日|請求日|発行日|開始日)[：:、,\s]*(.+)/,
     content:        /(?:内容|品名|但し書き)[：:、,\s]*(.+)/,
     project:        /(?:工事名|現場名|案件名)[：:、,\s]*(.+)/,
     constructionId: /(?:工事番号|工事ID)[：:、,\s]*(.+)/,
     location:       /(?:工事場所|現場住所|住所|場所)[：:、,\s]*(.+)/,
-    initial:        /(?:イニシャル|頭文字)[：:、,\s]*([A-Za-zＡ-Ｚ]+)/
+    initial:        /(?:イニシャル|頭文字)[：:、,\s]*([A-Za-zＡ-Ｚ])/
   };
   const lines = text.split(/\r?\n/);
   lines.forEach(line => {
@@ -652,8 +681,8 @@ function parseStructuredMessage_(text) {
       }
     });
   });
-  // 完了キーワード検出
-  if (text.includes('完了')) {
+  // 完了キーワード検出（「完了日」指定 or テキストに「完了」を含む場合）
+  if (/完了日[：:、,\s]/.test(text) || text.includes('完了')) {
     result.detectedKanryo = true;
   }
   return result.person ? result : null;
@@ -663,7 +692,8 @@ function parseLineMessageWithGemini_(text) {
   if (!CONFIG.API_KEY) return null;
 
   const prompt = '以下のテキストから工事に関する情報を抽出してJSON形式で返してください。' +
-    'キー: person(担当者・業者名・企業名), contractor(施工者・施工業者), amount(金額・数値), date(着工日・日付・yyyy/MM/dd形式), content(内容・品名), project(工事名・現場名), constructionId(工事番号), location(工事場所・現場住所), initial(イニシャル・頭文字・アルファベット1-2文字), detectedKanryo(テキストに「完了」が含まれるかboolean)。' +
+    '主要キー: project(工事名・現場名), person(担当者・業者名・企業名), initial(イニシャル・頭文字・アルファベット1文字), date(着工日・完了日・日付・yyyy/MM/dd形式), contractor(施工者・施工業者)。' +
+    '補助キー: amount(金額・数値), content(内容・品名), constructionId(工事番号), location(工事場所・現場住所), detectedKanryo(テキストに「完了」や「完了日」が含まれるかboolean)。' +
     '該当しない項目はnullにしてください。\n\nテキスト:\n' + text;
 
   const responseSchema = {
@@ -3857,33 +3887,62 @@ function apiAiAssistantUnified(userInstruction, contextJson) {
     var prompt = buildUnifiedPrompt_(userInstruction, ctx);
     var schema = buildUnifiedResponseSchema_(ctx.screen);
 
-    var res = UrlFetchApp.fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + CONFIG.API_KEY,
-      {
-        method: "post",
-        contentType: "application/json",
-        payload: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            response_mime_type: "application/json",
-            response_schema: schema,
-            temperature: 0.1
-          }
-        }),
-        muteHttpExceptions: true
+    // まずFlashで試行、RECITATION時はProにフォールバック
+    var models = ['gemini-3-flash-preview', 'gemini-3.1-pro-preview'];
+    var aiResult = null;
+
+    for (var mi = 0; mi < models.length; mi++) {
+      var model = models[mi];
+      console.log('apiAiAssistantUnified: モデル ' + model + ' で実行');
+
+      var res = UrlFetchApp.fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + CONFIG.API_KEY,
+        {
+          method: "post",
+          contentType: "application/json",
+          payload: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: {
+              response_mime_type: "application/json",
+              response_schema: schema,
+              temperature: 0.1
+            }
+          }),
+          muteHttpExceptions: true
+        }
+      );
+
+      var json = JSON.parse(res.getContentText());
+      if (json.error) {
+        console.error("AI Unified Gemini Error (" + model + "): " + JSON.stringify(json.error));
+        // 最後のモデルならエラー返却、そうでなければ次のモデルへ
+        if (mi === models.length - 1) return JSON.stringify({ error: "AIの応答エラー: " + json.error.message });
+        continue;
       }
-    );
+      var candidate = json.candidates && json.candidates[0];
+      if (!candidate) {
+        var feedback = json.promptFeedback ? JSON.stringify(json.promptFeedback) : '';
+        console.error("AI Unified (" + model + "): No candidates. " + feedback);
+        if (mi === models.length - 1) return JSON.stringify({ error: "AIから回答を取得できませんでした" });
+        continue;
+      }
+      if (!candidate.content || !candidate.content.parts || !candidate.content.parts[0]) {
+        var reason = candidate.finishReason || 'UNKNOWN';
+        console.log("AI Unified (" + model + "): 応答不完全 finishReason=" + reason + " → フォールバック");
+        // RECITATION等で応答不完全 → 次のモデルへフォールバック
+        if (mi === models.length - 1) return JSON.stringify({ error: "AIの応答が不完全です（" + reason + "）。指示を言い換えてお試しください。" });
+        continue;
+      }
 
-    var json = JSON.parse(res.getContentText());
-    if (json.error) {
-      console.error("AI Unified Gemini Error: " + JSON.stringify(json.error));
-      return JSON.stringify({ error: "AIの応答エラー: " + json.error.message });
-    }
-    if (!json.candidates || !json.candidates[0]) {
-      return JSON.stringify({ error: "AIから回答を取得できませんでした" });
+      // 正常レスポンス取得
+      aiResult = JSON.parse(candidate.content.parts[0].text);
+      console.log('apiAiAssistantUnified: ' + model + ' で正常応答取得');
+      break;
     }
 
-    var aiResult = JSON.parse(json.candidates[0].content.parts[0].text);
+    if (!aiResult) {
+      return JSON.stringify({ error: "全モデルで応答を取得できませんでした" });
+    }
 
     // queryタイプの場合はデータ取得して要約
     if (aiResult.responseType === 'query') {
@@ -3892,7 +3951,7 @@ function apiAiAssistantUnified(userInstruction, contextJson) {
         var summary = summarizeQueryResult_(userInstruction, queryData, aiResult.queryType);
         aiResult.queryResult = summary;
       } catch (qe) {
-        console.error("Query execution error: " + qe.toString());
+        console.error("executeAiQuery_: エラー発生: " + qe.toString());
         aiResult.queryResult = "データ取得中にエラーが発生しました: " + qe.toString();
       }
     }
@@ -3900,7 +3959,7 @@ function apiAiAssistantUnified(userInstruction, contextJson) {
     return JSON.stringify(aiResult);
 
   } catch (e) {
-    console.error("apiAiAssistantUnified Exception: " + e.toString());
+    console.error("apiAiAssistantUnified: 例外発生: " + e.toString());
     return JSON.stringify({ error: "システムエラー: " + e.toString() });
   }
 }
@@ -3938,10 +3997,28 @@ function buildUnifiedPrompt_(userInstruction, ctx) {
   }
 
   // 画面固有のアクション定義
-  var actionDefs = '\n【共通アクション（全画面）】\n- navigate: 画面遷移。target に遷移先 (menu/list/edit/admin/invoice/dedicated_order) を指定。targetId で特定のデータを開く。targetSubTab でサブタブ指定。\n- query: データ検索。queryType (projects/orders/invoices/analysis/deposits/payments) と queryParams (year, vendor, status 等) を指定。';
+  var estimateActionsDef = '\n- update_item: 明細行のフィールドを更新。filterで対象を絞り、changesで値を設定、modifierで計算。\n- update_header: ヘッダー(client,project,location,period,payment,expiry)を更新。\n- add_item: 新しい明細行を追加。newItemにcategory,product,spec,qty,unit,price,cost,vendorを指定。\n- remove_item: 明細行を削除。filterで対象を絞り込む。';
+
+  var actionDefs = '\n【共通アクション（全画面）】\n- navigate: 画面遷移。target に遷移先 (menu/list/edit/admin/invoice/dedicated_order) を指定。targetId で特定のデータを開く。targetSubTab でサブタブ指定。\n- query: データ検索。queryType (projects/orders/invoices/analysis/deposits/payments) と queryParams (year, vendor, status, project 等) を指定。\n- load_estimate: 見積履歴から工事名で検索して読み込む。projectNameに工事名（部分一致）を指定。読み込み後は自動的に見積編集画面に遷移する。\n- create_pdf: 現在の見積を保存してPDFを作成する。見積編集画面でのみ使用可能。' +
+  '\n\n【複合操作】\n複数の操作を順番に実行できます。actionsの配列に実行順で並べてください。\n順序の原則: 読込(load_estimate) → 変更(update_header/update_item等) → 出力(create_pdf)\n' +
+  '\n【複合操作パターン】\n' +
+  'パターンA: 既存見積を読み込み → ヘッダー変更 → PDF作成\n' +
+  '  actions: [load_estimate(projectName=検索語), update_header(changes), create_pdf]\n' +
+  'パターンB: 既存見積を読み込み → 明細一括変更 → PDF作成\n' +
+  '  actions: [load_estimate(projectName=検索語), update_item(filter+modifier), create_pdf]\n' +
+  'パターンC: 既存見積を読み込み → 複数フィールド変更\n' +
+  '  actions: [load_estimate(projectName=検索語), update_header(changes={複数フィールド})]\n' +
+  '\n【曖昧表現の解釈ルール】\n' +
+  '- 「〜の内容を探して反映」「〜をベースに」「〜を元に」「〜をコピーして」 → load_estimate\n' +
+  '- 「〜に変えて」「〜に変更して」「〜にして」 → update_header / update_item\n' +
+  '- 「見積書を作成して」「PDFにして」「PDF作って」 → create_pdf\n' +
+  '- 「全部」「全て」「すべて」 → filter: { "operator": "all" }\n' +
+  '- 工事名の検索は部分一致。ユーザー指定のキーワードをそのままprojectNameに設定\n' +
+  '- 複数の変更指示は1つのupdate_headerのchangesにまとめる\n' +
+  '\nload_estimate後に使える見積操作アクション:' + estimateActionsDef;
 
   if (screen === 'edit') {
-    actionDefs += '\n【見積操作アクション】\n- update_item: 明細行のフィールドを更新。filterで対象を絞り、changesで値を設定、modifierで計算。\n- update_header: ヘッダー(client,project,location,period,payment,expiry)を更新。\n- add_item: 新しい明細行を追加。newItemにcategory,product,spec,qty,unit,price,cost,vendorを指定。\n- remove_item: 明細行を削除。filterで対象を絞り込む。';
+    actionDefs += '\n【見積操作アクション（現在の画面）】' + estimateActionsDef;
   } else if (screen === 'dedicated_order') {
     actionDefs += '\n【発注操作アクション】\n- update_order_item: 発注明細行のフィールドを更新。filterで対象を絞り、changesでproduct,spec,vendor,estQty,estUnit,estPrice,exeQty,exeUnit,exePriceを設定、modifierで計算。\n- update_order_header: 発注ヘッダー(vendor,project,location,period,payment,expiry,date)を更新。\n- add_order_item: 新しい発注明細行を追加。\n- remove_order_item: 発注明細行を削除。';
   } else if (screen === 'invoice') {
@@ -3961,7 +4038,7 @@ function buildUnifiedPrompt_(userInstruction, ctx) {
 
 function buildUnifiedResponseSchema_(screen) {
   var actionProperties = {
-    "type": { "type": "STRING", "description": "navigate|update_item|update_header|add_item|remove_item|update_order_item|update_order_header|add_order_item|remove_order_item|update_invoice" },
+    "type": { "type": "STRING", "description": "navigate|update_item|update_header|add_item|remove_item|update_order_item|update_order_header|add_order_item|remove_order_item|update_invoice|load_estimate|create_pdf" },
     "target": { "type": "STRING", "description": "navigate先: menu/list/edit/admin/invoice/dedicated_order" },
     "targetId": { "type": "STRING", "description": "navigate先で開くデータID" },
     "targetSubTab": { "type": "STRING", "description": "navigate先のサブタブ" },
@@ -3982,7 +4059,8 @@ function buildUnifiedResponseSchema_(screen) {
         "value": { "type": "NUMBER" }
       }
     },
-    "newItem": { "type": "OBJECT", "description": "追加する新規行データ" }
+    "newItem": { "type": "OBJECT", "description": "追加する新規行データ" },
+    "projectName": { "type": "STRING", "description": "load_estimate時の工事名（部分一致検索）" }
   };
 
   return {
@@ -4013,6 +4091,7 @@ function executeAiQuery_(queryType, params) {
     if (params.year) data = data.filter(function(p) { return String(p.date || '').indexOf(String(params.year)) >= 0; });
     if (params.status) data = data.filter(function(p) { return p.status === params.status; });
     if (params.client) data = data.filter(function(p) { return String(p.client || '').indexOf(params.client) >= 0; });
+    if (params.project) data = data.filter(function(p) { return String(p.project || '').indexOf(params.project) >= 0; });
   } else if (queryType === 'orders') {
     data = JSON.parse(apiGetOrders());
     if (params.vendor) data = data.filter(function(o) { return String(o.vendor || '').indexOf(params.vendor) >= 0; });
@@ -4059,7 +4138,7 @@ function summarizeQueryResult_(question, data, queryType) {
       }
     );
     var json = JSON.parse(res.getContentText());
-    if (json.candidates && json.candidates[0]) {
+    if (json.candidates && json.candidates[0] && json.candidates[0].content && json.candidates[0].content.parts && json.candidates[0].content.parts[0]) {
       return json.candidates[0].content.parts[0].text;
     }
   } catch (e) {
