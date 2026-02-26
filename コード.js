@@ -3885,63 +3885,67 @@ function apiAiAssistantUnified(userInstruction, contextJson) {
 
     var ctx = JSON.parse(contextJson || '{}');
     var prompt = buildUnifiedPrompt_(userInstruction, ctx);
-    var schema = buildUnifiedResponseSchema_(ctx.screen);
 
-    // まずFlashで試行、RECITATION時はProにフォールバック
+    // まずFlashで試行、失敗時(タイムアウト/RECITATION等)はProにフォールバック
     var models = ['gemini-3-flash-preview', 'gemini-3.1-pro-preview'];
     var aiResult = null;
+    var lastError = '';
 
     for (var mi = 0; mi < models.length; mi++) {
       var model = models[mi];
       console.log('apiAiAssistantUnified: モデル ' + model + ' で実行');
 
-      var res = UrlFetchApp.fetch(
-        "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + CONFIG.API_KEY,
-        {
-          method: "post",
-          contentType: "application/json",
-          payload: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: {
-              response_mime_type: "application/json",
-              response_schema: schema,
-              temperature: 0.1
-            }
-          }),
-          muteHttpExceptions: true
+      try {
+        var res = UrlFetchApp.fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + CONFIG.API_KEY,
+          {
+            method: "post",
+            contentType: "application/json",
+            payload: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                response_mime_type: "application/json",
+                temperature: 0.1
+              }
+            }),
+            muteHttpExceptions: true
+          }
+        );
+
+        var json = JSON.parse(res.getContentText());
+        if (json.error) {
+          lastError = json.error.message;
+          console.error("AI Unified (" + model + "): APIエラー: " + lastError);
+          continue;
         }
-      );
+        var candidate = json.candidates && json.candidates[0];
+        if (!candidate) {
+          lastError = 'candidates無し';
+          console.error("AI Unified (" + model + "): " + lastError);
+          continue;
+        }
+        if (!candidate.content || !candidate.content.parts || !candidate.content.parts[0]) {
+          var reason = candidate.finishReason || 'UNKNOWN';
+          lastError = '応答不完全 (' + reason + ')';
+          console.log("AI Unified (" + model + "): " + lastError + " → フォールバック");
+          continue;
+        }
 
-      var json = JSON.parse(res.getContentText());
-      if (json.error) {
-        console.error("AI Unified Gemini Error (" + model + "): " + JSON.stringify(json.error));
-        // 最後のモデルならエラー返却、そうでなければ次のモデルへ
-        if (mi === models.length - 1) return JSON.stringify({ error: "AIの応答エラー: " + json.error.message });
-        continue;
-      }
-      var candidate = json.candidates && json.candidates[0];
-      if (!candidate) {
-        var feedback = json.promptFeedback ? JSON.stringify(json.promptFeedback) : '';
-        console.error("AI Unified (" + model + "): No candidates. " + feedback);
-        if (mi === models.length - 1) return JSON.stringify({ error: "AIから回答を取得できませんでした" });
-        continue;
-      }
-      if (!candidate.content || !candidate.content.parts || !candidate.content.parts[0]) {
-        var reason = candidate.finishReason || 'UNKNOWN';
-        console.log("AI Unified (" + model + "): 応答不完全 finishReason=" + reason + " → フォールバック");
-        // RECITATION等で応答不完全 → 次のモデルへフォールバック
-        if (mi === models.length - 1) return JSON.stringify({ error: "AIの応答が不完全です（" + reason + "）。指示を言い換えてお試しください。" });
-        continue;
-      }
+        // 正常レスポンス取得
+        aiResult = JSON.parse(candidate.content.parts[0].text);
+        console.log('apiAiAssistantUnified: ' + model + ' で正常応答取得: ' + JSON.stringify(aiResult).substring(0, 500));
+        break;
 
-      // 正常レスポンス取得
-      aiResult = JSON.parse(candidate.content.parts[0].text);
-      console.log('apiAiAssistantUnified: ' + model + ' で正常応答取得');
-      break;
+      } catch (fetchErr) {
+        // タイムアウト等のfetch例外 → 次のモデルへフォールバック
+        lastError = fetchErr.toString();
+        console.error("AI Unified (" + model + "): fetch例外: " + lastError + " → フォールバック");
+        continue;
+      }
     }
 
     if (!aiResult) {
-      return JSON.stringify({ error: "全モデルで応答を取得できませんでした" });
+      return JSON.stringify({ error: "AIから応答を取得できませんでした（" + lastError + "）。しばらく待ってから再度お試しください。" });
     }
 
     // queryタイプの場合はデータ取得して要約
@@ -3972,20 +3976,27 @@ function buildUnifiedPrompt_(userInstruction, ctx) {
 
   var screenLabel = { menu: 'ホーム', list: '一覧/統計', edit: '見積編集', admin: '管理', invoice: '請求書受取', dedicated_order: '発注書作成' }[screen] || screen;
 
-  // 画面固有のデータコンテキスト
+  // 画面固有のデータコンテキスト（明細は上限20件に制限しAI処理を高速化）
+  var MAX_CONTEXT_ITEMS = 20;
   var dataContext = '';
   if (screen === 'edit' && formData.header) {
     var header = formData.header;
-    var items = (formData.items || []).map(function(it, i) {
+    var allItems = formData.items || [];
+    var truncated = allItems.length > MAX_CONTEXT_ITEMS;
+    var items = allItems.slice(0, MAX_CONTEXT_ITEMS).map(function(it, i) {
       return i + ': cat=' + (it.category||'') + ' prod=' + (it.product||'') + ' spec=' + (it.spec||'') + ' qty=' + (it.qty||0) + ' unit=' + (it.unit||'') + ' price=' + (it.price||0) + ' cost=' + (it.cost||0) + ' vendor=' + (it.vendor||'');
     }).join('\n');
-    dataContext = '\n【現在の見積データ】\n顧客: ' + (header.client||'') + ' / 工事名: ' + (header.project||'') + ' / 現場: ' + (header.location||'') + '\n明細(' + (formData.items||[]).length + '件):\n' + items;
+    if (truncated) items += '\n... (他 ' + (allItems.length - MAX_CONTEXT_ITEMS) + '件省略)';
+    dataContext = '\n【現在の見積データ】\n顧客: ' + (header.client||'') + ' / 工事名: ' + (header.project||'') + ' / 現場: ' + (header.location||'') + '\n明細(全' + allItems.length + '件):\n' + items;
   } else if (screen === 'dedicated_order' && formData.header) {
     var oh = formData.header;
-    var oItems = (formData.items || []).map(function(it, i) {
+    var allOItems = formData.items || [];
+    var oTruncated = allOItems.length > MAX_CONTEXT_ITEMS;
+    var oItems = allOItems.slice(0, MAX_CONTEXT_ITEMS).map(function(it, i) {
       return i + ': prod=' + (it.product||'') + ' spec=' + (it.spec||'') + ' vendor=' + (it.vendor||'') + ' estQty=' + (it.estQty||0) + ' estPrice=' + (it.estPrice||0) + ' exeQty=' + (it.exeQty||0) + ' exePrice=' + (it.exePrice||0);
     }).join('\n');
-    dataContext = '\n【現在の発注データ】\n発注先: ' + (oh.vendor||'') + ' / 工事名: ' + (oh.project||'') + ' / 現場: ' + (oh.location||'') + '\n明細(' + (formData.items||[]).length + '件):\n' + oItems;
+    if (oTruncated) oItems += '\n... (他 ' + (allOItems.length - MAX_CONTEXT_ITEMS) + '件省略)';
+    dataContext = '\n【現在の発注データ】\n発注先: ' + (oh.vendor||'') + ' / 工事名: ' + (oh.project||'') + ' / 現場: ' + (oh.location||'') + '\n明細(全' + allOItems.length + '件):\n' + oItems;
   } else if (screen === 'invoice' && formData.constructionId !== undefined) {
     dataContext = '\n【現在の請求書データ】\n工事ID: ' + (formData.constructionId||'') + ' / 工事名: ' + (formData.project||'') + ' / 日付: ' + (formData.date||'') + ' / 担当: ' + (formData.person||'') + ' / 業者: ' + (formData.contractor||'') + ' / 金額: ' + (formData.amount||0) + ' / 相殺: ' + (formData.offset||0) + ' / 内容: ' + (formData.content||'') + ' / 現場: ' + (formData.location||'') + ' / ステータス: ' + (formData.status||'');
   } else if (screen === 'list') {
@@ -4001,16 +4012,32 @@ function buildUnifiedPrompt_(userInstruction, ctx) {
 
   var actionDefs = '\n【共通アクション（全画面）】\n- navigate: 画面遷移。target に遷移先 (menu/list/edit/admin/invoice/dedicated_order) を指定。targetId で特定のデータを開く。targetSubTab でサブタブ指定。\n- query: データ検索。queryType (projects/orders/invoices/analysis/deposits/payments) と queryParams (year, vendor, status, project 等) を指定。\n- load_estimate: 見積履歴から工事名で検索して読み込む。projectNameに工事名（部分一致）を指定。読み込み後は自動的に見積編集画面に遷移する。\n- create_pdf: 現在の見積を保存してPDFを作成する。見積編集画面でのみ使用可能。' +
   '\n\n【複合操作】\n複数の操作を順番に実行できます。actionsの配列に実行順で並べてください。\n順序の原則: 読込(load_estimate) → 変更(update_header/update_item等) → 出力(create_pdf)\n' +
-  '\n【複合操作パターン】\n' +
-  'パターンA: 既存見積を読み込み → ヘッダー変更 → PDF作成\n' +
-  '  actions: [load_estimate(projectName=検索語), update_header(changes), create_pdf]\n' +
-  'パターンB: 既存見積を読み込み → 明細一括変更 → PDF作成\n' +
-  '  actions: [load_estimate(projectName=検索語), update_item(filter+modifier), create_pdf]\n' +
-  'パターンC: 既存見積を読み込み → 複数フィールド変更\n' +
-  '  actions: [load_estimate(projectName=検索語), update_header(changes={複数フィールド})]\n' +
+  '\n【複合操作パターン（{A},{B}等はユーザー指定の値で置換）】\n' +
+  'パターンA: 「{A}の見積をベースに、工事名を{B}に変えてPDF作成して」\n' +
+  '  → actions: [\n' +
+  '    { "type": "load_estimate", "projectName": "{A}" },\n' +
+  '    { "type": "update_header", "changes": { "project": "{B}" } },\n' +
+  '    { "type": "create_pdf" }\n' +
+  '  ]\n' +
+  'パターンB: 「{A}の見積を開いて、単価を全部{N}倍にしてPDF作って」\n' +
+  '  → actions: [\n' +
+  '    { "type": "load_estimate", "projectName": "{A}" },\n' +
+  '    { "type": "update_item", "filter": { "operator": "all" }, "modifier": { "field": "price", "operation": "multiply", "value": {N} } },\n' +
+  '    { "type": "create_pdf" }\n' +
+  '  ]\n' +
+  'パターンC: 「{A}の見積をベースに、顧客を{B}に、現場を{C}にして」\n' +
+  '  → actions: [\n' +
+  '    { "type": "load_estimate", "projectName": "{A}" },\n' +
+  '    { "type": "update_header", "changes": { "client": "{B}", "location": "{C}" } }\n' +
+  '  ]\n' +
+  '\n【重要】指示に「〜に変えて」「〜に変更して」等の変更指示がある場合、必ずupdate_headerまたはupdate_itemアクションを生成してください。変更指示を省略しないでください。\n' +
   '\n【曖昧表現の解釈ルール】\n' +
   '- 「〜の内容を探して反映」「〜をベースに」「〜を元に」「〜をコピーして」 → load_estimate\n' +
-  '- 「〜に変えて」「〜に変更して」「〜にして」 → update_header / update_item\n' +
+  '- 「工事名を〜に変えて」 → update_header changes: { "project": "値" }\n' +
+  '- 「顧客を〜に変えて」 → update_header changes: { "client": "値" }\n' +
+  '- 「現場を〜に変えて」 → update_header changes: { "location": "値" }\n' +
+  '- 「単価を〜倍にして」 → update_item modifier: { "field": "price", "operation": "multiply", "value": 数値 }\n' +
+  '- 「発注先を〜にして」 → update_item changes: { "vendor": "値" }\n' +
   '- 「見積書を作成して」「PDFにして」「PDF作って」 → create_pdf\n' +
   '- 「全部」「全て」「すべて」 → filter: { "operator": "all" }\n' +
   '- 工事名の検索は部分一致。ユーザー指定のキーワードをそのままprojectNameに設定\n' +
@@ -4033,10 +4060,53 @@ function buildUnifiedPrompt_(userInstruction, ctx) {
     }).join('\n');
   }
 
-  return 'あなたは建築見積システムの操作アシスタントです。\nユーザーの自然言語の指示を解析し、適切なレスポンスタイプ(navigate/query/action)を判別してJSONを生成してください。\n\n【最重要ルール】\n操作(action)は必ず「現在表示中の画面のデータのみ」を対象にしてください。\n「全て」「全部」等の指示は「現在の画面に表示されている明細全て」を意味します。\nデータベースや他の画面のデータを変更する操作は絶対に生成しないでください。\n例: 見積編集画面で「発注先を全て○○にして」→ 今開いている見積の明細だけ変更する\n\n【現在の画面】' + screenLabel + ' (' + screen + ')' + dataContext + actionDefs + '\n\n【filterの仕様】\n- operator: "all"(現在の画面の全件), "equals"(完全一致), "contains"(部分一致)\n- field: 検索対象のフィールド名\n- value: 比較する値\n\n【modifierの仕様（数値変更用）】\n- field: 対象フィールド\n- operation: "multiply"(乗算), "add"(加算), "set"(直接設定)\n- value: 数値\n\n【queryTypeの仕様】\n- projects: 見積一覧。queryParamsにyear,status,clientでフィルタ可。\n- orders: 発注一覧。queryParamsにvendor,statusでフィルタ可。\n- invoices: 請求書一覧。queryParamsにstatus,contractorでフィルタ可。\n- analysis: 分析データ。queryParamsにyearを指定。\n- deposits: 入金一覧。\n- payments: 出金一覧。' + historyContext + '\n\n【ユーザーの指示】\n' + userInstruction + '\n\n注意:\n- responseTypeは navigate / query / action のいずれかを必ず指定\n- confidenceは0〜1で、指示が曖昧な場合は低い値を返してください\n- summaryは日本語で内容を簡潔に説明してください\n- 画面遷移の指示にはnavigate、データに関する質問にはquery、フォーム操作にはactionを使用\n- actionは現在表示中の画面のフォームデータのみを対象とし、他の画面やDBのデータは変更しない\n- 現在の画面で使えないアクションは生成しないでください\n- 指示が操作と無関係な場合はactions空配列でsummaryに説明を入れてください';
+  return 'あなたは建築見積システムの操作アシスタントです。\nユーザーの自然言語の指示を解析し、適切なレスポンスタイプ(navigate/query/action)を判別してJSONを生成してください。\n\n【最重要ルール】\n操作(action)は必ず「現在表示中の画面のデータのみ」を対象にしてください。\n「全て」「全部」等の指示は「現在の画面に表示されている明細全て」を意味します。\nデータベースや他の画面のデータを変更する操作は絶対に生成しないでください。\n例: 見積編集画面で「発注先を全て○○にして」→ 今開いている見積の明細だけ変更する\n\n【現在の画面】' + screenLabel + ' (' + screen + ')' + dataContext + actionDefs + '\n\n【filterの仕様】\n- operator: "all"(現在の画面の全件), "equals"(完全一致), "contains"(部分一致)\n- field: 検索対象のフィールド名\n- value: 比較する値\n\n【modifierの仕様（数値変更用）】\n- field: 対象フィールド\n- operation: "multiply"(乗算), "add"(加算), "set"(直接設定)\n- value: 数値\n\n【queryTypeの仕様】\n- projects: 見積一覧。queryParamsにyear,status,clientでフィルタ可。\n- orders: 発注一覧。queryParamsにvendor,statusでフィルタ可。\n- invoices: 請求書一覧。queryParamsにstatus,contractorでフィルタ可。\n- analysis: 分析データ。queryParamsにyearを指定。\n- deposits: 入金一覧。\n- payments: 出金一覧。' + historyContext + '\n\n【ユーザーの指示】\n' + userInstruction + '\n\n【出力JSON形式】\n必ず以下の形式のJSONを返してください。各フィールドにはユーザーが指定した具体的な値を入れてください。空文字""は禁止です。\n{\n  "responseType": "navigate" | "query" | "action",\n  "queryType": "projects|orders|invoices|analysis|deposits|payments",\n  "queryParams": { ... },\n  "actions": [\n    {\n      "type": "アクション種別",\n      "projectName": "load_estimate時の工事名（ユーザー指定の値をそのまま入れる）",\n      "target": "navigate先画面",\n      "targetId": "対象ID",\n      "changes": { "フィールド名": "ユーザー指定の値" },\n      "filter": { "field": "フィールド名", "operator": "all|equals|contains", "value": "値" },\n      "modifier": { "field": "フィールド名", "operation": "multiply|add|set", "value": 数値 },\n      "newItem": { "category": "", "product": "", "spec": "", "qty": 0, "unit": "", "price": 0, "cost": 0, "vendor": "" }\n    }\n  ],\n  "summary": "日本語で操作内容を簡潔に説明",\n  "confidence": 0.0～1.0\n}\n\n注意:\n- responseTypeは navigate / query / action のいずれかを必ず指定\n- confidenceは0〜1で、指示が曖昧な場合は低い値を返してください\n- summaryは日本語で内容を簡潔に説明してください\n- 画面遷移の指示にはnavigate、データに関する質問にはquery、フォーム操作にはactionを使用\n- actionは現在表示中の画面のフォームデータのみを対象とし、他の画面やDBのデータは変更しない\n- 現在の画面で使えないアクションは生成しないでください\n- 指示が操作と無関係な場合はactions空配列でsummaryに説明を入れてください\n- actions内の各オブジェクトには、そのアクションに必要なフィールドだけ含めてください\n- projectName、changes等にはユーザーの指示から抽出した具体的な値を必ず入れてください';
 }
 
 function buildUnifiedResponseSchema_(screen) {
+  // 見積ヘッダー変更用フィールド
+  var headerChangeProps = {
+    "client": { "type": "STRING", "description": "顧客名" },
+    "project": { "type": "STRING", "description": "工事名" },
+    "location": { "type": "STRING", "description": "現場" },
+    "period": { "type": "STRING", "description": "工期" },
+    "payment": { "type": "STRING", "description": "支払条件" },
+    "expiry": { "type": "STRING", "description": "有効期限" }
+  };
+  // 明細変更用フィールド
+  var itemChangeProps = {
+    "vendor": { "type": "STRING", "description": "発注先" },
+    "category": { "type": "STRING", "description": "工種" },
+    "product": { "type": "STRING", "description": "品名" },
+    "spec": { "type": "STRING", "description": "仕様" },
+    "qty": { "type": "NUMBER", "description": "数量" },
+    "unit": { "type": "STRING", "description": "単位" },
+    "price": { "type": "NUMBER", "description": "単価" },
+    "cost": { "type": "NUMBER", "description": "原価" },
+    "remarks": { "type": "STRING", "description": "備考" }
+  };
+  // 画面ごとに適切なchangesプロパティを選択
+  var changesProps = headerChangeProps;
+  if (screen === 'dedicated_order') {
+    changesProps = {
+      "vendor": { "type": "STRING" }, "project": { "type": "STRING" }, "location": { "type": "STRING" },
+      "product": { "type": "STRING" }, "spec": { "type": "STRING" },
+      "estQty": { "type": "NUMBER" }, "estUnit": { "type": "STRING" }, "estPrice": { "type": "NUMBER" },
+      "exeQty": { "type": "NUMBER" }, "exeUnit": { "type": "STRING" }, "exePrice": { "type": "NUMBER" }
+    };
+  } else if (screen === 'invoice') {
+    changesProps = {
+      "constructionId": { "type": "STRING" }, "project": { "type": "STRING" }, "date": { "type": "STRING" },
+      "person": { "type": "STRING" }, "contractor": { "type": "STRING" }, "amount": { "type": "NUMBER" },
+      "offset": { "type": "NUMBER" }, "content": { "type": "STRING" }, "location": { "type": "STRING" }, "status": { "type": "STRING" }
+    };
+  } else {
+    // edit画面: ヘッダーと明細の両方のフィールドを含める
+    changesProps = {};
+    for (var k in headerChangeProps) changesProps[k] = headerChangeProps[k];
+    for (var k2 in itemChangeProps) changesProps[k2] = itemChangeProps[k2];
+  }
+
   var actionProperties = {
     "type": { "type": "STRING", "description": "navigate|update_item|update_header|add_item|remove_item|update_order_item|update_order_header|add_order_item|remove_order_item|update_invoice|load_estimate|create_pdf" },
     "target": { "type": "STRING", "description": "navigate先: menu/list/edit/admin/invoice/dedicated_order" },
@@ -4050,7 +4120,7 @@ function buildUnifiedResponseSchema_(screen) {
         "value": { "type": "STRING" }
       }
     },
-    "changes": { "type": "OBJECT", "description": "変更するフィールドと値のマップ" },
+    "changes": { "type": "OBJECT", "description": "変更するフィールドと値のマップ。該当フィールドにユーザー指定の値を設定", "properties": changesProps },
     "modifier": {
       "type": "OBJECT",
       "properties": {
@@ -4059,8 +4129,8 @@ function buildUnifiedResponseSchema_(screen) {
         "value": { "type": "NUMBER" }
       }
     },
-    "newItem": { "type": "OBJECT", "description": "追加する新規行データ" },
-    "projectName": { "type": "STRING", "description": "load_estimate時の工事名（部分一致検索）" }
+    "newItem": { "type": "OBJECT", "description": "追加する新規行データ", "properties": itemChangeProps },
+    "projectName": { "type": "STRING", "description": "load_estimate時の工事名（部分一致検索）。ユーザーが指定した工事名をそのまま設定" }
   };
 
   return {

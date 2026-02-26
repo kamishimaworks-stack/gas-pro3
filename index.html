@@ -5809,6 +5809,7 @@ window.__script2Ran = true;
                     const resJson = await gas('apiAiAssistantUnified', text, JSON.stringify(ctx));
                     if (myRequestId !== aiAssistantRequestId) return; // 中断済み
                     const res = JSON.parse(resJson);
+                    console.log('sendAiAssistantMessage: AIレスポンス:', JSON.stringify(res));
 
                     if (res.error) {
                         aiAssistantMessages.value.push({ role: 'ai', text: 'エラー: ' + res.error });
