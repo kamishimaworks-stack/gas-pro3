@@ -26,9 +26,25 @@ const CONFIG = {
     masterSet: '見積セットマスタ',
     masterVendor: '発注先マスタ',
     journalConfig: '仕訳設定マスタ',
-    masterMaterial: '材料費単価マスタ'
+    masterMaterial: '材料費単価マスタ',
+    masterMaterialIncl: '材料（施工込）単価マスタ',
+    progressDb: '出来高DB'
   }
 };
+
+// 出来高DB 列インデックス（1-based: GAS Range用）
+const PROG_COL = {
+  no: 1, name: 2, spec: 3, totalQty: 4, unit: 5, price: 6,
+  estimateAmt: 7, prevCumQty: 8, currCumQty: 9,
+  progressAmt: 10, progressRate: 11, periodQty: 12, periodPayment: 13,
+  estId: 14, orderId: 15, reportMonth: 16
+};
+
+const PROGRESS_HEADERS = [
+  'No.', '品名', '仕様', '全体数量', '単位', '単価', '見積金額',
+  '前月末累積数量', '現在の累積数量', '出来高金額', '出来高比率',
+  '今回数量', '今回支払金額', '関連見積ID', '関連発注ID', '報告月'
+];
 
 const CACHE_TTL = 1500;
 const CACHE_TTL_SHORT = 120;  // 2分（案件・発注等の更新頻度考慮）
@@ -45,6 +61,9 @@ function invalidateDataCache_() {
     c.remove("masters_data");
     c.remove("products_data");
     c.remove("material_prices");
+    c.remove("progress_data_all");
+    c.remove("progress_report_list");
+    c.remove("progress_report_list_all");
     const y = new Date().getFullYear();
     for (let i = y - 2; i <= y + 1; i++) c.remove("analysis_" + i);
   } catch (e) { /* ignore */ }
@@ -972,17 +991,33 @@ function checkAndFixMaterialHeader(sheet) {
   }
 }
 
-function apiGetMaterialPrices() {
-  const cache = CacheService.getScriptCache();
-  const cached = cache.get("material_prices");
-  if (cached) return cached;
+function getMaterialSheetName_(sheetType) {
+  return sheetType === 'incl' ? CONFIG.sheetNames.masterMaterialIncl : CONFIG.sheetNames.masterMaterial;
+}
 
+function getMaterialCacheKey_(sheetType) {
+  return sheetType === 'incl' ? 'material_incl_prices' : 'material_prices';
+}
+
+function getOrCreateMaterialSheet_(sheetType) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(CONFIG.sheetNames.masterMaterial);
+  const sheetName = getMaterialSheetName_(sheetType);
+  let sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
-    sheet = ss.insertSheet(CONFIG.sheetNames.masterMaterial);
+    sheet = ss.insertSheet(sheetName);
     checkAndFixMaterialHeader(sheet);
   }
+  if (sheet.getLastRow() === 0) checkAndFixMaterialHeader(sheet);
+  return sheet;
+}
+
+function apiGetMaterialPrices(sheetType) {
+  const cacheKey = getMaterialCacheKey_(sheetType);
+  const cache = CacheService.getScriptCache();
+  const cached = cache.get(cacheKey);
+  if (cached) return cached;
+
+  const sheet = getOrCreateMaterialSheet_(sheetType);
   if (sheet.getLastRow() <= 1) return JSON.stringify([]);
 
   const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getDisplayValues();
@@ -996,24 +1031,18 @@ function apiGetMaterialPrices() {
 
   const result = JSON.stringify(items);
   try {
-    cache.put("material_prices", result, CACHE_TTL);
+    cache.put(cacheKey, result, CACHE_TTL);
   } catch (e) {
-    console.warn("Cache put failed (material_prices): " + e.message);
+    console.warn("Cache put failed (" + cacheKey + "): " + e.message);
   }
   return result;
 }
 
-function apiUpsertMaterialPrices(jsonItems) {
+function apiUpsertMaterialPrices(jsonItems, sheetType) {
   const items = JSON.parse(jsonItems);
   if (!items || !items.length) return JSON.stringify({ success: true, updated: 0, added: 0 });
 
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(CONFIG.sheetNames.masterMaterial);
-  if (!sheet) {
-    sheet = ss.insertSheet(CONFIG.sheetNames.masterMaterial);
-    checkAndFixMaterialHeader(sheet);
-  }
-  if (sheet.getLastRow() === 0) checkAndFixMaterialHeader(sheet);
+  const sheet = getOrCreateMaterialSheet_(sheetType);
 
   const now = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy/MM/dd HH:mm");
   let updated = 0, added = 0;
@@ -1067,10 +1096,9 @@ function apiUpsertMaterialPrices(jsonItems) {
   return JSON.stringify({ success: true, updated: updated, added: added });
 }
 
-function apiDeleteMaterialPrice(product, spec) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const sheet = ss.getSheetByName(CONFIG.sheetNames.masterMaterial);
-  if (!sheet || sheet.getLastRow() <= 1) return JSON.stringify({ success: false, message: "データなし" });
+function apiDeleteMaterialPrice(product, spec, sheetType) {
+  const sheet = getOrCreateMaterialSheet_(sheetType);
+  if (sheet.getLastRow() <= 1) return JSON.stringify({ success: false, message: "データなし" });
 
   const data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
   const targetProduct = String(product || '').trim().toLowerCase();
@@ -1085,6 +1113,106 @@ function apiDeleteMaterialPrice(product, spec) {
     }
   }
   return JSON.stringify({ success: false, message: "該当データが見つかりません" });
+}
+
+// ==================== マスタデータ編集API ====================
+
+const MASTER_TYPE_MAP = {
+  basic: CONFIG.sheetNames.masterBasic,
+  client: CONFIG.sheetNames.masterClient,
+  set: CONFIG.sheetNames.masterSet,
+  vendor: CONFIG.sheetNames.masterVendor,
+  material: CONFIG.sheetNames.masterMaterial,
+  material_incl: CONFIG.sheetNames.masterMaterialIncl,
+  journal: CONFIG.sheetNames.journalConfig
+};
+
+function getMasterSheet_(masterType) {
+  const sheetName = MASTER_TYPE_MAP[masterType];
+  if (!sheetName) throw new Error('不明なマスタ種別: ' + masterType);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) throw new Error('シートが見つかりません: ' + sheetName);
+  return sheet;
+}
+
+function apiGetMasterData(masterType) {
+  try {
+    const sheet = getMasterSheet_(masterType);
+    const data = sheet.getDataRange().getDisplayValues();
+    if (data.length === 0) return JSON.stringify({ headers: [], data: [] });
+    const headers = data[0];
+    const rows = data.slice(1);
+    Logger.log('apiGetMasterData: ' + masterType + ' のデータ取得完了 (' + rows.length + '件)');
+    return JSON.stringify({ headers: headers, data: rows });
+  } catch (e) {
+    Logger.log('apiGetMasterData: エラー - ' + e.message);
+    return JSON.stringify({ error: e.message });
+  }
+}
+
+function apiUpdateMasterRow(masterType, rowIndex, valuesJson) {
+  try {
+    const sheet = getMasterSheet_(masterType);
+    const values = JSON.parse(valuesJson);
+    const sheetRow = rowIndex + 2; // ヘッダー行分+1、0始まり→1始まり+1
+    if (sheetRow < 2 || sheetRow > sheet.getLastRow()) throw new Error('行番号が範囲外です');
+    sheet.getRange(sheetRow, 1, 1, values.length).setValues([values]);
+    invalidateDataCache_();
+    Logger.log('apiUpdateMasterRow: ' + masterType + ' の行' + rowIndex + 'を更新しました');
+    return JSON.stringify({ success: true });
+  } catch (e) {
+    Logger.log('apiUpdateMasterRow: エラー - ' + e.message);
+    return JSON.stringify({ success: false, message: e.message });
+  }
+}
+
+function apiAddMasterRow(masterType, valuesJson) {
+  try {
+    const sheet = getMasterSheet_(masterType);
+    const values = JSON.parse(valuesJson);
+    sheet.appendRow(values);
+    invalidateDataCache_();
+    Logger.log('apiAddMasterRow: ' + masterType + ' に行を追加しました');
+    return JSON.stringify({ success: true });
+  } catch (e) {
+    Logger.log('apiAddMasterRow: エラー - ' + e.message);
+    return JSON.stringify({ success: false, message: e.message });
+  }
+}
+
+function apiDeleteMasterRow(masterType, rowIndex) {
+  try {
+    const sheet = getMasterSheet_(masterType);
+    const sheetRow = rowIndex + 2; // ヘッダー行分+1、0始まり→1始まり+1
+    if (sheetRow < 2 || sheetRow > sheet.getLastRow()) throw new Error('行番号が範囲外です');
+    sheet.deleteRow(sheetRow);
+    invalidateDataCache_();
+    Logger.log('apiDeleteMasterRow: ' + masterType + ' の行' + rowIndex + 'を削除しました');
+    return JSON.stringify({ success: true });
+  } catch (e) {
+    Logger.log('apiDeleteMasterRow: エラー - ' + e.message);
+    return JSON.stringify({ success: false, message: e.message });
+  }
+}
+
+function apiClearMaterialPrices(sheetType) {
+  try {
+    const sheetName = getMaterialSheetName_(sheetType);
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet) return JSON.stringify({ success: true, deleted: 0 });
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return JSON.stringify({ success: true, deleted: 0 });
+    const count = lastRow - 1;
+    sheet.deleteRows(2, count);
+    invalidateDataCache_();
+    Logger.log('apiClearMaterialPrices: ' + sheetName + ' から' + count + '件のデータを削除しました');
+    return JSON.stringify({ success: true, deleted: count });
+  } catch (e) {
+    Logger.log('apiClearMaterialPrices: エラー - ' + e.message);
+    return JSON.stringify({ success: false, message: e.message });
+  }
 }
 
 function apiSearchSets(keyword) {
@@ -4215,4 +4343,682 @@ function summarizeQueryResult_(question, data, queryType) {
     console.error("summarizeQueryResult_ error: " + e.toString());
   }
   return 'データを取得しました（' + (Array.isArray(data) ? data.length : '1') + '件）。詳細は一覧画面で確認してください。';
+}
+
+// ===========================================================
+// 出来高報告書 機能
+// ===========================================================
+
+/** 出来高キャッシュ一括破棄（orderId対応、現在月±2ヶ月分のキーを削除） */
+function invalidateProgressCache_(orderId) {
+  try {
+    var cc = CacheService.getScriptCache();
+    cc.remove("progress_data_all");
+    cc.remove("progress_report_list");
+    cc.remove("progress_report_list_all");
+    if (orderId) {
+      cc.remove("progress_data_" + orderId);
+      cc.remove("progress_data_" + orderId + "_");
+    }
+    // 現在月±2ヶ月分のキャッシュキーを削除
+    var now = new Date();
+    for (var delta = -2; delta <= 2; delta++) {
+      var d = new Date(now.getFullYear(), now.getMonth() + delta, 1);
+      var ym = Utilities.formatDate(d, Session.getScriptTimeZone(), 'yyyy-MM');
+      cc.remove("progress_report_list_" + ym);
+      if (orderId) {
+        cc.remove("progress_data_" + orderId + "_" + ym);
+      }
+    }
+  } catch (_) {}
+}
+
+/** 出来高DBシート取得（なければ作成してヘッダー・ARRAYFORMULA・書式設定） */
+function getOrCreateProgressSheet_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(CONFIG.sheetNames.progressDb);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG.sheetNames.progressDb);
+    Logger.log('出来高DBシート作成');
+  }
+  // ヘッダー確認・設定
+  const firstRow = sheet.getRange(1, 1, 1, PROGRESS_HEADERS.length).getValues()[0];
+  const needsHeader = PROGRESS_HEADERS.some((h, i) => firstRow[i] !== h);
+  if (needsHeader) {
+    sheet.getRange(1, 1, 1, PROGRESS_HEADERS.length).setValues([PROGRESS_HEADERS]);
+    sheet.getRange(1, 1, 1, PROGRESS_HEADERS.length)
+      .setFontWeight('bold').setBackground('#0d47a1').setFontColor('#ffffff').setHorizontalAlignment('center');
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+/** 出来高DBにARRAYFORMULA設置 */
+function setProgressFormulas_(sheet) {
+  sheet.getRange('A2').setFormula('=ARRAYFORMULA(IF(B2:B="","",ROW(B2:B)-1))');
+  sheet.getRange('G2').setFormula('=ARRAYFORMULA(IF(B2:B="","",D2:D*F2:F))');
+  sheet.getRange('J2').setFormula('=ARRAYFORMULA(IF(B2:B="","",I2:I*F2:F))');
+  sheet.getRange('K2').setFormula('=ARRAYFORMULA(IF(B2:B="","",IFERROR(J2:J/G2:G,"")))');
+  sheet.getRange('L2').setFormula('=ARRAYFORMULA(IF(B2:B="","",I2:I-H2:H))');
+  sheet.getRange('M2').setFormula('=ARRAYFORMULA(IF(B2:B="","",L2:L*F2:F))');
+  Logger.log('出来高DB: ARRAYFORMULA設置完了');
+}
+
+/** 出来高DBの書式設定 */
+function formatProgressSheet_(sheet) {
+  sheet.setColumnWidth(PROG_COL.no, 40);
+  sheet.setColumnWidth(PROG_COL.name, 180);
+  sheet.setColumnWidth(PROG_COL.spec, 140);
+  sheet.setColumnWidth(PROG_COL.totalQty, 90);
+  sheet.setColumnWidth(PROG_COL.unit, 50);
+  sheet.setColumnWidth(PROG_COL.price, 100);
+  sheet.setColumnWidth(PROG_COL.estimateAmt, 120);
+  sheet.setColumnWidth(PROG_COL.prevCumQty, 110);
+  sheet.setColumnWidth(PROG_COL.currCumQty, 110);
+  sheet.setColumnWidth(PROG_COL.progressAmt, 120);
+  sheet.setColumnWidth(PROG_COL.progressRate, 80);
+  sheet.setColumnWidth(PROG_COL.periodQty, 90);
+  sheet.setColumnWidth(PROG_COL.periodPayment, 120);
+  sheet.setColumnWidth(PROG_COL.estId, 100);
+  sheet.setColumnWidth(PROG_COL.orderId, 100);
+  sheet.setColumnWidth(PROG_COL.reportMonth, 90);
+  var maxRows = 500;
+  sheet.getRange(2, PROG_COL.price, maxRows, 1).setNumberFormat('#,##0');
+  sheet.getRange(2, PROG_COL.estimateAmt, maxRows, 1).setNumberFormat('#,##0');
+  sheet.getRange(2, PROG_COL.progressAmt, maxRows, 1).setNumberFormat('#,##0');
+  sheet.getRange(2, PROG_COL.progressRate, maxRows, 1).setNumberFormat('0.0%');
+  sheet.getRange(2, PROG_COL.periodPayment, maxRows, 1).setNumberFormat('#,##0');
+}
+
+/** 出来高DB全行読み取り */
+function readProgressItems_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(CONFIG.sheetNames.progressDb);
+  if (!sheet || sheet.getLastRow() <= 1) return [];
+  const lastRow = sheet.getLastRow();
+  const disp = sheet.getRange(2, 1, lastRow - 1, PROGRESS_HEADERS.length).getDisplayValues();
+  const raw = sheet.getRange(2, 1, lastRow - 1, PROGRESS_HEADERS.length).getValues();
+  return disp.map((row, i) => ({
+    rowIndex: i + 2,
+    no: row[0], name: row[1], spec: row[2],
+    totalQty: raw[i][3], unit: row[4], price: raw[i][5],
+    estimateAmt: raw[i][6], prevCumQty: raw[i][7], currCumQty: raw[i][8],
+    progressAmt: raw[i][9], progressRate: raw[i][10],
+    periodQty: raw[i][11], periodPayment: raw[i][12],
+    estId: row[13] || '', orderId: row[14] || '',
+    reportMonth: row[15] || '',
+    estimateAmtDisp: row[6], progressAmtDisp: row[9],
+    progressRateDisp: row[10], periodPaymentDisp: row[12]
+  }));
+}
+
+// --- 出来高 API関数 ---
+
+/** 報告書一覧取得（orderId単位でグルーピング、reportMonth対応） */
+function apiProgressGetReportList(reportMonth) {
+  try {
+    const c = CacheService.getScriptCache();
+    const cacheKey = "progress_report_list_" + (reportMonth || "all");
+    const cached = c.get(cacheKey);
+    if (cached) return cached;
+    var items = readProgressItems_();
+    // reportMonth指定時: その月のデータまたは月未設定データのみに絞る
+    if (reportMonth) {
+      items = items.filter(function(item) { return !item.reportMonth || item.reportMonth === reportMonth; });
+    }
+    // orderId でグルーピング
+    const groups = {};
+    items.forEach(item => {
+      const oid = item.orderId || '__none__';
+      if (!groups[oid]) groups[oid] = [];
+      groups[oid].push(item);
+    });
+    // ヘッダー情報マップ読み取り
+    var headersMap = {};
+    try {
+      var hJson = PropertiesService.getScriptProperties().getProperty('PROGRESS_REPORT_HEADERS');
+      if (hJson) headersMap = JSON.parse(hJson);
+    } catch (_) {}
+    // 旧キーからのマイグレーション
+    if (Object.keys(headersMap).length === 0) {
+      try {
+        var oldJson = PropertiesService.getScriptProperties().getProperty('PROGRESS_REPORT_HEADER');
+        if (oldJson) {
+          var oldH = JSON.parse(oldJson);
+          if (oldH && Object.keys(oldH).length > 0) {
+            // 旧データがあれば __none__ に格納
+            headersMap['__none__'] = oldH;
+          }
+        }
+      } catch (_) {}
+    }
+    var result = [];
+    Object.keys(groups).forEach(oid => {
+      var grp = groups[oid];
+      var estimateTotal = 0, progressTotal = 0, periodPaymentTotal = 0;
+      grp.forEach(item => {
+        estimateTotal += Number(item.estimateAmt) || 0;
+        progressTotal += Number(item.progressAmt) || 0;
+        periodPaymentTotal += Number(item.periodPayment) || 0;
+      });
+      var overallRate = estimateTotal > 0 ? progressTotal / estimateTotal : 0;
+      result.push({
+        orderId: oid === '__none__' ? '' : oid,
+        itemCount: grp.length,
+        estimateTotal: estimateTotal,
+        progressTotal: progressTotal,
+        overallRate: overallRate,
+        periodPaymentTotal: periodPaymentTotal,
+        headerInfo: headersMap[oid] || {}
+      });
+    });
+    var json = JSON.stringify(result);
+    try { c.put(cacheKey, json, 60); } catch (_) {}
+    return json;
+  } catch (e) {
+    Logger.log('apiProgressGetReportList: エラー - ' + e.message);
+    return '[]';
+  }
+}
+
+/** 初期設定（シート作成+ARRAYFORMULA+書式） */
+function apiProgressSetupSheet() {
+  try {
+    const sheet = getOrCreateProgressSheet_();
+    setProgressFormulas_(sheet);
+    formatProgressSheet_(sheet);
+    return JSON.stringify({ success: true, message: '出来高DBシートを作成・設定しました' });
+  } catch (e) {
+    Logger.log('apiProgressSetupSheet: エラー - ' + e.message);
+    return JSON.stringify({ success: false, error: e.message });
+  }
+}
+
+/** 品目取得（orderId指定時: フィルタ返却、reportMonth対応） */
+function apiProgressGetItems(orderId, reportMonth) {
+  try {
+    const c = CacheService.getScriptCache();
+    const cacheKey = "progress_data_" + (orderId || "all") + "_" + (reportMonth || "");
+    const cached = c.get(cacheKey);
+    if (cached) return cached;
+    var items = readProgressItems_();
+    if (orderId) {
+      items = items.filter(function(item) { return item.orderId === orderId; });
+    }
+    if (reportMonth) {
+      items = items.filter(function(item) { return !item.reportMonth || item.reportMonth === reportMonth; });
+    }
+    const json = JSON.stringify(items);
+    try { c.put(cacheKey, json, 60); } catch (_) {}
+    return json;
+  } catch (e) {
+    Logger.log('apiProgressGetItems: エラー - ' + e.message);
+    return '[]';
+  }
+}
+
+/** 累積数量更新（LockService + flush + 行再読込） */
+function apiProgressUpdateCumQty(rowIndex, qty) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return JSON.stringify({ success: false, error: '他の処理が実行中です' });
+  }
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CONFIG.sheetNames.progressDb);
+    if (!sheet) return JSON.stringify({ success: false, error: '出来高DBが見つかりません' });
+    sheet.getRange(rowIndex, PROG_COL.currCumQty).setValue(Number(qty));
+    SpreadsheetApp.flush();
+    // キャッシュ破棄
+    invalidateProgressCache_('');
+    // 更新後の行データ返却
+    const row = sheet.getRange(rowIndex, 1, 1, PROGRESS_HEADERS.length).getDisplayValues()[0];
+    const raw = sheet.getRange(rowIndex, 1, 1, PROGRESS_HEADERS.length).getValues()[0];
+    return JSON.stringify({
+      success: true,
+      row: {
+        rowIndex: rowIndex, no: row[0], name: row[1], spec: row[2],
+        totalQty: raw[3], unit: row[4], price: raw[5],
+        estimateAmt: raw[6], prevCumQty: raw[7], currCumQty: raw[8],
+        progressAmt: raw[9], progressRate: raw[10],
+        periodQty: raw[11], periodPayment: raw[12],
+        estId: row[13] || '', orderId: row[14] || '',
+        reportMonth: row[15] || '',
+        estimateAmtDisp: row[6], progressAmtDisp: row[9],
+        progressRateDisp: row[10], periodPaymentDisp: row[12]
+      }
+    });
+  } catch (e) {
+    Logger.log('apiProgressUpdateCumQty: エラー - ' + e.message);
+    return JSON.stringify({ success: false, error: e.message });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** 見積から品目取込 */
+function apiProgressImportFromEstimate(estimateId) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return JSON.stringify({ success: false, error: '他の処理が実行中です' });
+  }
+  try {
+    const estData = _getEstimateData(estimateId);
+    if (!estData || !estData.items || estData.items.length === 0) {
+      return JSON.stringify({ success: false, error: '見積データが見つかりません: ' + estimateId });
+    }
+    const sheet = getOrCreateProgressSheet_();
+    setProgressFormulas_(sheet);
+    // 既存キー取得（重複チェック）
+    const existingKeys = {};
+    const lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      const existing = sheet.getRange(2, PROG_COL.name, lastRow - 1, 2).getValues();
+      existing.forEach(r => { existingKeys[String(r[0]).trim() + '|' + String(r[1]).trim()] = true; });
+    }
+    const newRows = [];
+    let skipped = 0;
+    estData.items.forEach(item => {
+      const name = String(item.product || '').trim();
+      const spec = String(item.spec || '').trim();
+      if (!name) return;
+      const key = name + '|' + spec;
+      if (existingKeys[key]) { skipped++; return; }
+      existingKeys[key] = true;
+      newRows.push(['', name, spec, Number(item.qty) || 0, item.unit || '', Number(item.price) || 0, '', 0, 0, '', '', '', '', estimateId, '', '']);
+    });
+    if (newRows.length === 0) {
+      return JSON.stringify({ success: true, added: 0, skipped: skipped, message: '新規データはありませんでした' });
+    }
+    const startRow = Math.max(sheet.getLastRow() + 1, 2);
+    sheet.getRange(startRow, 1, newRows.length, PROGRESS_HEADERS.length).setValues(newRows);
+    invalidateProgressCache_('');
+    Logger.log('apiProgressImportFromEstimate: ' + newRows.length + '件取込, ' + skipped + '件スキップ');
+    return JSON.stringify({ success: true, added: newRows.length, skipped: skipped });
+  } catch (e) {
+    Logger.log('apiProgressImportFromEstimate: エラー - ' + e.message);
+    return JSON.stringify({ success: false, error: e.message });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** 発注から品目取込（reportMonth対応） */
+function apiProgressImportFromOrder(orderId, reportMonth) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return JSON.stringify({ success: false, error: '他の処理が実行中です' });
+  }
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const orderSheet = ss.getSheetByName(CONFIG.sheetNames.order);
+    if (!orderSheet || orderSheet.getLastRow() <= 1) {
+      return JSON.stringify({ success: false, error: '発注データが見つかりません' });
+    }
+    // 発注シートのヘッダー解析
+    const oData = orderSheet.getDataRange().getDisplayValues();
+    let hIdx = 0;
+    for (let i = 0; i < Math.min(10, oData.length); i++) { if (oData[i][0] === 'ID') { hIdx = i; break; } }
+    const h = oData[hIdx]; const col = {}; h.forEach((v, i) => col[String(v).trim()] = i);
+    const idxId = col['ID'], idxProd = col['品名'], idxSpec = col['仕様'];
+    const idxQty = col['数量'], idxUnit = col['単位'], idxPrice = col['単価'];
+    const idxEstId = col['関連見積ID'];
+
+    // 対象発注のデータ収集（ID列は先頭行のみ、後続行は空 → currentId追跡）
+    const orderItems = [];
+    let currentId = '';
+    for (let i = hIdx + 1; i < oData.length; i++) {
+      const r = oData[i];
+      const idCell = String(r[idxId] || '').trim();
+      if (idCell && idCell !== 'ID') { currentId = idCell; }
+      if (!currentId || currentId !== orderId) continue;
+      orderItems.push({
+        name: String(r[idxProd] || '').trim(),
+        spec: String(r[idxSpec] || '').trim(),
+        qty: parseCurrency(r[idxQty]),
+        unit: String(r[idxUnit] || '').trim(),
+        price: parseCurrency(r[idxPrice]),
+        estId: idxEstId !== undefined ? String(r[idxEstId] || '').trim() : ''
+      });
+    }
+    if (orderItems.length === 0) {
+      return JSON.stringify({ success: false, error: '発注ID ' + orderId + ' のデータが見つかりません' });
+    }
+    // 出来高DBに追加（重複チェックは同一orderId+reportMonth内のみ）
+    const sheet = getOrCreateProgressSheet_();
+    setProgressFormulas_(sheet);
+    const existingKeys = {};
+    const lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      const existingData = sheet.getRange(2, PROG_COL.name, lastRow - 1, PROGRESS_HEADERS.length).getValues();
+      existingData.forEach(r => {
+        var rowOrderId = String(r[PROG_COL.orderId - PROG_COL.name] || '').trim();
+        var rowRM = String(r[PROG_COL.reportMonth - PROG_COL.name] || '').trim();
+        if (rowOrderId === orderId && (!reportMonth || !rowRM || rowRM === reportMonth)) {
+          existingKeys[String(r[0]).trim() + '|' + String(r[1]).trim()] = true;
+        }
+      });
+    }
+    const newRows = [];
+    let skipped = 0;
+    orderItems.forEach(item => {
+      if (!item.name) return;
+      const key = item.name + '|' + item.spec;
+      if (existingKeys[key]) { skipped++; return; }
+      existingKeys[key] = true;
+      newRows.push(['', item.name, item.spec, item.qty, item.unit, item.price, '', 0, 0, '', '', '', '', item.estId, orderId, reportMonth || '']);
+    });
+    if (newRows.length === 0) {
+      return JSON.stringify({ success: true, added: 0, skipped: skipped, message: '新規データはありませんでした' });
+    }
+    const startRow = Math.max(sheet.getLastRow() + 1, 2);
+    sheet.getRange(startRow, 1, newRows.length, PROGRESS_HEADERS.length).setValues(newRows);
+    invalidateProgressCache_(orderId);
+    Logger.log('apiProgressImportFromOrder: ' + newRows.length + '件取込, ' + skipped + '件スキップ');
+    return JSON.stringify({ success: true, added: newRows.length, skipped: skipped });
+  } catch (e) {
+    Logger.log('apiProgressImportFromOrder: エラー - ' + e.message);
+    return JSON.stringify({ success: false, error: e.message });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** 手動品目追加 */
+function apiProgressImportManual(jsonArray) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return JSON.stringify({ success: false, error: '他の処理が実行中です' });
+  }
+  try {
+    const items = JSON.parse(jsonArray);
+    if (!items || items.length === 0) {
+      return JSON.stringify({ success: false, error: 'データがありません' });
+    }
+    const sheet = getOrCreateProgressSheet_();
+    setProgressFormulas_(sheet);
+    const existingKeys = {};
+    const lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      const existing = sheet.getRange(2, PROG_COL.name, lastRow - 1, 2).getValues();
+      existing.forEach(r => { existingKeys[String(r[0]).trim() + '|' + String(r[1]).trim()] = true; });
+    }
+    const newRows = [];
+    let skipped = 0;
+    items.forEach(item => {
+      const name = String(item.name || '').trim();
+      const spec = String(item.spec || '').trim();
+      if (!name) return;
+      const key = name + '|' + spec;
+      if (existingKeys[key]) { skipped++; return; }
+      existingKeys[key] = true;
+      newRows.push(['', name, spec, parseCurrency(item.qty), String(item.unit || '').trim(), parseCurrency(item.price), '', 0, 0, '', '', '', '', '', '', '']);
+    });
+    if (newRows.length === 0) {
+      return JSON.stringify({ success: true, added: 0, skipped: skipped, message: '新規データはありませんでした' });
+    }
+    const startRow = Math.max(sheet.getLastRow() + 1, 2);
+    sheet.getRange(startRow, 1, newRows.length, PROGRESS_HEADERS.length).setValues(newRows);
+    invalidateProgressCache_('');
+    Logger.log('apiProgressImportManual: ' + newRows.length + '件追加, ' + skipped + '件スキップ');
+    return JSON.stringify({ success: true, added: newRows.length, skipped: skipped });
+  } catch (e) {
+    Logger.log('apiProgressImportManual: エラー - ' + e.message);
+    return JSON.stringify({ success: false, error: e.message });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** 工事単位月締め（orderId + currentYM → 翌月行を新規作成） */
+function apiProgressMonthlyCloseOrder(orderId, currentYM) {
+  if (!orderId || !currentYM) {
+    return JSON.stringify({ success: false, error: '発注IDと対象年月が必要です' });
+  }
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(15000)) {
+    return JSON.stringify({ success: false, error: '他の処理が実行中です' });
+  }
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CONFIG.sheetNames.progressDb);
+    if (!sheet || sheet.getLastRow() <= 1) {
+      return JSON.stringify({ success: false, error: '出来高DBにデータがありません' });
+    }
+    // nextYM算出
+    var parts = currentYM.split('-');
+    var ny = Number(parts[0]), nm = Number(parts[1]) + 1;
+    if (nm > 12) { nm = 1; ny++; }
+    var nextYM = ny + '-' + String(nm).padStart(2, '0');
+
+    // 対象行を取得（orderId一致 かつ reportMonth=currentYM または空）
+    var allItems = readProgressItems_();
+    var targetItems = allItems.filter(function(item) {
+      return item.orderId === orderId && (!item.reportMonth || item.reportMonth === currentYM);
+    });
+    if (targetItems.length === 0) {
+      return JSON.stringify({ success: false, error: '対象データが見つかりません（orderId=' + orderId + ', 月=' + currentYM + '）' });
+    }
+
+    // 二重締め防止: nextYMのデータが既にあればエラー
+    var nextExists = allItems.some(function(item) {
+      return item.orderId === orderId && item.reportMonth === nextYM;
+    });
+    if (nextExists) {
+      return JSON.stringify({ success: false, error: nextYM + ' のデータが既に存在します。二重締めはできません。' });
+    }
+
+    // 1) reportMonth空の行にcurrentYMをタグ付け
+    targetItems.forEach(function(item) {
+      if (!item.reportMonth) {
+        sheet.getRange(item.rowIndex, PROG_COL.reportMonth).setValue(currentYM);
+      }
+    });
+
+    // 2) 翌月行を新規作成
+    var newRows = [];
+    targetItems.forEach(function(item) {
+      var currCum = Number(item.currCumQty) || 0;
+      newRows.push([
+        '', item.name, item.spec, Number(item.totalQty) || 0, item.unit, Number(item.price) || 0,
+        '', currCum, currCum, '', '', '', '',
+        item.estId || '', orderId, nextYM
+      ]);
+    });
+    var startRow = Math.max(sheet.getLastRow() + 1, 2);
+    sheet.getRange(startRow, 1, newRows.length, PROGRESS_HEADERS.length).setValues(newRows);
+    setProgressFormulas_(sheet);
+    SpreadsheetApp.flush();
+    invalidateProgressCache_(orderId);
+
+    Logger.log('apiProgressMonthlyCloseOrder: orderId=' + orderId + ' ' + currentYM + '→' + nextYM + ' ' + newRows.length + '件作成');
+    return JSON.stringify({ success: true, nextMonth: nextYM, count: newRows.length });
+  } catch (e) {
+    Logger.log('apiProgressMonthlyCloseOrder: エラー - ' + e.message);
+    return JSON.stringify({ success: false, error: e.message });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** 報告書ヘッダー取得（ScriptProperties、orderId対応マップ形式） */
+function apiProgressGetReportHeader(orderId) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    var headersMap = {};
+    var hJson = props.getProperty('PROGRESS_REPORT_HEADERS');
+    if (hJson) {
+      headersMap = JSON.parse(hJson);
+    } else {
+      // 旧キーからのマイグレーション
+      var oldJson = props.getProperty('PROGRESS_REPORT_HEADER');
+      if (oldJson) {
+        var oldH = JSON.parse(oldJson);
+        if (oldH && Object.keys(oldH).length > 0) {
+          headersMap['__none__'] = oldH;
+          props.setProperty('PROGRESS_REPORT_HEADERS', JSON.stringify(headersMap));
+        }
+      }
+    }
+    var key = orderId || '__none__';
+    return JSON.stringify(headersMap[key] || {});
+  } catch (e) {
+    Logger.log('apiProgressGetReportHeader: エラー - ' + e.message);
+    return JSON.stringify({});
+  }
+}
+
+/** 報告書ヘッダー保存（orderId対応マップ形式） */
+function apiProgressSaveReportHeader(headerJson, orderId) {
+  try {
+    const props = PropertiesService.getScriptProperties();
+    var headersMap = {};
+    var hJson = props.getProperty('PROGRESS_REPORT_HEADERS');
+    if (hJson) headersMap = JSON.parse(hJson);
+    var key = orderId || '__none__';
+    headersMap[key] = JSON.parse(headerJson);
+    props.setProperty('PROGRESS_REPORT_HEADERS', JSON.stringify(headersMap));
+    Logger.log('apiProgressSaveReportHeader: ヘッダー保存完了 (orderId=' + key + ')');
+    return JSON.stringify({ success: true });
+  } catch (e) {
+    Logger.log('apiProgressSaveReportHeader: エラー - ' + e.message);
+    return JSON.stringify({ success: false, error: e.message });
+  }
+}
+
+/** PDF生成（HTMLテンプレート → Drive保存、orderId+reportMonth対応） */
+function apiProgressGeneratePdf(headerJson, orderId, reportMonth) {
+  try {
+    const header = JSON.parse(headerJson);
+    var items = readProgressItems_();
+    if (orderId) {
+      items = items.filter(function(item) { return item.orderId === orderId; });
+    }
+    if (reportMonth) {
+      items = items.filter(function(item) { return !item.reportMonth || item.reportMonth === reportMonth; });
+    }
+    if (items.length === 0) {
+      return JSON.stringify({ success: false, error: '出来高DBにデータがありません' });
+    }
+    // サマリー計算
+    let estimateTotal = 0, progressTotal = 0, periodPaymentTotal = 0;
+    const pdfItems = items.map(item => {
+      const ea = Number(item.estimateAmt) || 0;
+      const pa = Number(item.progressAmt) || 0;
+      const pp = Number(item.periodPayment) || 0;
+      estimateTotal += ea;
+      progressTotal += pa;
+      periodPaymentTotal += pp;
+      return {
+        name: item.name, spec: item.spec,
+        totalQty: item.totalQty, unit: item.unit, price: item.price,
+        estimateAmt: ea,
+        currCumQty: item.currCumQty,
+        progressAmt: pa,
+        progressRate: item.progressRate,
+        periodQty: item.periodQty,
+        periodPayment: pp
+      };
+    });
+    const overallRate = estimateTotal > 0 ? progressTotal / estimateTotal : 0;
+    const summary = { estimateTotal, progressTotal, overallRate, periodPaymentTotal };
+
+    // ページネーション（1ページ目20行、2ページ目以降25行）
+    const pages = paginateItems(pdfItems, 20, 25);
+
+    // テンプレート展開
+    const tmpl = HtmlService.createTemplateFromFile('progress_report_template');
+    tmpl.data = {
+      header: header,
+      items: pdfItems,
+      pages: pages,
+      summary: summary,
+      createDate: getJapaneseDateStr(new Date())
+    };
+    const htmlOutput = tmpl.evaluate().getContent();
+
+    // PDF変換
+    const blob = Utilities.newBlob(htmlOutput, 'text/html', 'report.html');
+    const pdfBlob = blob.getAs('application/pdf');
+    const dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd');
+    const projectName = header.projectName ? '_' + header.projectName : '';
+    const fileName = '工事出来高報告書' + projectName + '_' + dateStr + '.pdf';
+    pdfBlob.setName(fileName);
+
+    // Drive保存
+    const folder = getSaveFolder();
+    const file = folder.createFile(pdfBlob);
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+    Logger.log('apiProgressGeneratePdf: ' + fileName + ' を保存 → ' + file.getUrl());
+    return JSON.stringify({ success: true, url: file.getUrl(), fileName: fileName });
+  } catch (e) {
+    Logger.log('apiProgressGeneratePdf: エラー - ' + e.message);
+    return JSON.stringify({ success: false, error: e.message });
+  }
+}
+
+/** 出来高 累積数量一括更新 */
+function apiProgressBatchUpdate(jsonArray) {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return JSON.stringify({ success: false, error: '他の処理が実行中です' });
+  }
+  try {
+    const rows = JSON.parse(jsonArray);
+    if (!rows || rows.length === 0) {
+      return JSON.stringify({ success: false, error: '更新データがありません' });
+    }
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CONFIG.sheetNames.progressDb);
+    if (!sheet) return JSON.stringify({ success: false, error: '出来高DBが見つかりません' });
+    rows.forEach(function(r) {
+      const ri = Number(r.rowIndex);
+      if (ri >= 2) {
+        sheet.getRange(ri, PROG_COL.currCumQty).setValue(Number(r.currCumQty) || 0);
+      }
+    });
+    SpreadsheetApp.flush();
+    invalidateProgressCache_('');
+    const items = readProgressItems_();
+    Logger.log('apiProgressBatchUpdate: ' + rows.length + '行を一括更新');
+    return JSON.stringify({ success: true, items: items });
+  } catch (e) {
+    Logger.log('apiProgressBatchUpdate: エラー - ' + e.message);
+    return JSON.stringify({ success: false, error: e.message });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** 出来高 行削除 */
+function apiProgressDeleteRow(rowIndex) {
+  const ri = Number(rowIndex);
+  if (ri < 2) {
+    return JSON.stringify({ success: false, error: 'ヘッダー行は削除できません' });
+  }
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    return JSON.stringify({ success: false, error: '他の処理が実行中です' });
+  }
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName(CONFIG.sheetNames.progressDb);
+    if (!sheet) return JSON.stringify({ success: false, error: '出来高DBが見つかりません' });
+    if (ri > sheet.getLastRow()) {
+      return JSON.stringify({ success: false, error: '指定行が存在しません' });
+    }
+    sheet.deleteRow(ri);
+    setProgressFormulas_(sheet);
+    SpreadsheetApp.flush();
+    invalidateProgressCache_('');
+    const items = readProgressItems_();
+    Logger.log('apiProgressDeleteRow: 行 ' + ri + ' を削除');
+    return JSON.stringify({ success: true, items: items });
+  } catch (e) {
+    Logger.log('apiProgressDeleteRow: エラー - ' + e.message);
+    return JSON.stringify({ success: false, error: e.message });
+  } finally {
+    lock.releaseLock();
+  }
 }

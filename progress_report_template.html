@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>工事出来高報告書</title>
+<style>
+  @page { size: A4 landscape; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'MS PGothic', 'Yu Gothic', 'Hiragino Kaku Gothic ProN', sans-serif;
+    padding: 18px 22px 14px;
+    color: #222;
+    font-size: 9pt;
+    line-height: 1.4;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ── ヘッダーエリア ── */
+  .header-area {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 10px;
+  }
+  .header-left { width: 30%; }
+  .header-center { width: 35%; text-align: center; }
+  .header-right { width: 35%; text-align: right; }
+
+  .report-title {
+    font-size: 18pt;
+    font-weight: bold;
+    letter-spacing: 2px;
+    border-bottom: 2px solid #222;
+    padding-bottom: 4px;
+    display: inline-block;
+    margin-bottom: 4px;
+  }
+  .report-month {
+    font-size: 12pt;
+    font-weight: bold;
+    margin-bottom: 2px;
+  }
+
+  /* 情報テーブル */
+  .info-table {
+    border-collapse: collapse;
+    font-size: 9pt;
+    width: 100%;
+  }
+  .info-table td {
+    padding: 2px 4px;
+    vertical-align: top;
+  }
+  .info-table .label {
+    font-weight: bold;
+    white-space: nowrap;
+    width: 70px;
+    color: #444;
+  }
+  .info-table .value {
+    border-bottom: 1px dotted #999;
+    min-width: 100px;
+  }
+
+  /* 印鑑欄 */
+  .stamp-area { margin-top: 2px; }
+  .stamp-table {
+    border-collapse: collapse;
+    margin-left: auto;
+    font-size: 8pt;
+  }
+  .stamp-table td {
+    border: 1px solid #333;
+    text-align: center;
+    width: 52px;
+  }
+  .stamp-table .stamp-header td {
+    background: #f3f3f3;
+    padding: 2px 4px;
+    font-weight: bold;
+    height: 18px;
+  }
+  .stamp-table .stamp-body td {
+    height: 50px;
+    vertical-align: middle;
+  }
+
+  /* 作成日 */
+  .create-date {
+    font-size: 8.5pt;
+    text-align: right;
+    margin-bottom: 2px;
+    color: #555;
+  }
+
+  /* ── 明細テーブル ── */
+  .details-table {
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: fixed;
+    font-size: 8.5pt;
+    margin-top: 6px;
+  }
+  .details-table colgroup col.col-name    { width: 14%; }
+  .details-table colgroup col.col-spec    { width: 12%; }
+  .details-table colgroup col.col-qty     { width: 6%; }
+  .details-table colgroup col.col-unit    { width: 4%; }
+  .details-table colgroup col.col-price   { width: 8%; }
+  .details-table colgroup col.col-est     { width: 9%; }
+  .details-table colgroup col.col-cumqty  { width: 6%; }
+  .details-table colgroup col.col-cumamt  { width: 9%; }
+  .details-table colgroup col.col-cumrate { width: 7%; }
+  .details-table colgroup col.col-perqty  { width: 6%; }
+  .details-table colgroup col.col-peramt  { width: 9%; }
+  .details-table colgroup col.col-remark  { width: 10%; }
+
+  .details-table th,
+  .details-table td {
+    border: 1px solid #333;
+    padding: 3px 4px;
+    vertical-align: middle;
+  }
+
+  /* ヘッダー行 */
+  .details-table thead th {
+    background: #f3f3f3;
+    font-weight: bold;
+    text-align: center;
+    font-size: 8pt;
+  }
+  .details-table thead th.group-header {
+    background: #e8e8e8;
+    font-size: 8.5pt;
+    border-bottom: 2px solid #333;
+  }
+
+  /* データ行 */
+  .details-table tbody td {
+    height: 18px;
+    font-size: 8.5pt;
+  }
+  .details-table tbody td.text-right {
+    text-align: right;
+    font-family: 'MS Gothic', monospace;
+  }
+  .details-table tbody td.text-center {
+    text-align: center;
+  }
+  .details-table tbody td.text-left {
+    text-align: left;
+  }
+
+  /* 合計行 */
+  .details-table tbody tr.row-total td {
+    background: #f0f4f8;
+    font-weight: bold;
+    border-top: 2px solid #333;
+    border-bottom: 2px solid #333;
+  }
+
+  /* 空行パディング */
+  .details-table tbody tr.row-padding td {
+    color: transparent;
+  }
+
+  /* ── フッター ── */
+  .footer-area {
+    margin-top: 6px;
+    display: flex;
+    justify-content: space-between;
+    font-size: 8pt;
+    color: #666;
+  }
+
+  /* 改ページ */
+  .page-break { page-break-before: always; }
+
+  /* 続きヘッダー */
+  .continuation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid #333;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+    font-size: 9pt;
+  }
+</style>
+</head>
+<body>
+<?
+  // サーバーサイドデータ展開
+  var header = data.header || {};
+  var items = data.items || [];
+  var pages = data.pages || [items];
+  var summary = data.summary || {};
+  var createDate = data.createDate || '';
+
+  // 金額フォーマット
+  function fmtNum(v) {
+    var n = Number(v) || 0;
+    return n.toLocaleString('ja-JP');
+  }
+  function fmtPct(v) {
+    var n = Number(v) || 0;
+    return (n * 100).toFixed(1) + '%';
+  }
+?>
+
+<? for (var p = 0; p < pages.length; p++) { ?>
+<? if (p > 0) { ?><div class="page-break"></div><? } ?>
+
+<? if (p === 0) { ?>
+<!-- ===== 1ページ目ヘッダー ===== -->
+<div class="header-area">
+  <!-- 左: 工事番号 / 受注金額 -->
+  <div class="header-left">
+    <table class="info-table">
+      <tr>
+        <td class="label">工事番号</td>
+        <td class="value"><?= header.projectNo || '' ?></td>
+      </tr>
+      <tr>
+        <td class="label">受注金額</td>
+        <td class="value" style="font-family:'MS Gothic',monospace;"><?= header.contractAmount ? fmtNum(header.contractAmount) + ' 円' : '' ?></td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- 中央: タイトル / 工事名 / 工事場所 -->
+  <div class="header-center">
+    <div class="report-month"><?= header.reportMonth || '' ?></div>
+    <div class="report-title">工事出来高報告書</div>
+    <table class="info-table" style="margin-top:6px;">
+      <tr>
+        <td class="label" style="text-align:right;">工事名</td>
+        <td class="value"><?= header.projectName || '' ?></td>
+      </tr>
+      <tr>
+        <td class="label" style="text-align:right;">工事場所</td>
+        <td class="value"><?= header.location || '' ?></td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- 右: 受渡先 / 工期 / 印鑑 -->
+  <div class="header-right">
+    <div class="create-date">作成日: <?= createDate ?></div>
+    <table class="info-table" style="margin-left:auto; width:auto;">
+      <tr>
+        <td class="label" style="text-align:right;">受渡先</td>
+        <td class="value"><?= header.deliveryTo || '' ?></td>
+      </tr>
+      <tr>
+        <td class="label" style="text-align:right;">工　期</td>
+        <td class="value"><?= header.constructionPeriod || '' ?></td>
+      </tr>
+    </table>
+    <div class="stamp-area">
+      <table class="stamp-table">
+        <tr class="stamp-header">
+          <td>承 認</td>
+          <td>確 認</td>
+          <td>担 当</td>
+        </tr>
+        <tr class="stamp-body">
+          <td></td>
+          <td></td>
+          <td><?= header.personInCharge || '' ?></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<? } else { ?>
+<!-- ===== 2ページ目以降ヘッダー ===== -->
+<div class="continuation-header">
+  <span><b><?= header.reportMonth || '' ?> 工事出来高報告書</b>（続き）　<?= header.projectName || '' ?></span>
+  <span>工事番号: <?= header.projectNo || '' ?></span>
+</div>
+<? } ?>
+
+<!-- ===== 明細テーブル ===== -->
+<table class="details-table">
+  <colgroup>
+    <col class="col-name"><col class="col-spec"><col class="col-qty"><col class="col-unit">
+    <col class="col-price"><col class="col-est">
+    <col class="col-cumqty"><col class="col-cumamt"><col class="col-cumrate">
+    <col class="col-perqty"><col class="col-peramt">
+    <col class="col-remark">
+  </colgroup>
+
+  <thead>
+    <!-- 上段ヘッダー（グループ結合） -->
+    <tr>
+      <th rowspan="2">品名</th>
+      <th rowspan="2">仕様</th>
+      <th rowspan="2">数量</th>
+      <th rowspan="2">単位</th>
+      <th rowspan="2">単価</th>
+      <th rowspan="2">見積金額</th>
+      <th colspan="3" class="group-header">累積出来高</th>
+      <th colspan="2" class="group-header">今回支払金額</th>
+      <th rowspan="2">備考</th>
+    </tr>
+    <!-- 下段ヘッダー -->
+    <tr>
+      <th>数量</th>
+      <th>出来高金額</th>
+      <th>出来高比率</th>
+      <th>数量</th>
+      <th>金額</th>
+    </tr>
+  </thead>
+
+  <tbody>
+  <? var pageItems = pages[p]; ?>
+  <? for (var r = 0; r < pageItems.length; r++) { ?>
+    <? var item = pageItems[r]; ?>
+    <? if (item.isPadding) { ?>
+    <tr class="row-padding">
+      <td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td>
+      <td></td><td></td><td></td><td></td><td></td><td></td>
+    </tr>
+    <? } else { ?>
+    <tr>
+      <td class="text-left"><?= item.name || '' ?></td>
+      <td class="text-left"><?= item.spec || '' ?></td>
+      <td class="text-right"><?= item.totalQty != null ? fmtNum(item.totalQty) : '' ?></td>
+      <td class="text-center"><?= item.unit || '' ?></td>
+      <td class="text-right"><?= item.price != null ? fmtNum(item.price) : '' ?></td>
+      <td class="text-right"><?= item.estimateAmt != null ? fmtNum(item.estimateAmt) : '' ?></td>
+      <td class="text-right"><?= item.currCumQty != null ? fmtNum(item.currCumQty) : '' ?></td>
+      <td class="text-right"><?= item.progressAmt != null ? fmtNum(item.progressAmt) : '' ?></td>
+      <td class="text-center"><?= item.progressRate != null ? fmtPct(item.progressRate) : '' ?></td>
+      <td class="text-right"><?= item.periodQty != null ? fmtNum(item.periodQty) : '' ?></td>
+      <td class="text-right"><?= item.periodPayment != null ? fmtNum(item.periodPayment) : '' ?></td>
+      <td class="text-left"><?= item.remark || '' ?></td>
+    </tr>
+    <? } ?>
+  <? } ?>
+
+  <? if (p === pages.length - 1) { ?>
+    <!-- 合計行（最終ページのみ） -->
+    <tr class="row-total">
+      <td class="text-center" colspan="2">合　計</td>
+      <td></td><td></td><td></td>
+      <td class="text-right"><?= fmtNum(summary.estimateTotal) ?></td>
+      <td></td>
+      <td class="text-right"><?= fmtNum(summary.progressTotal) ?></td>
+      <td class="text-center"><?= summary.overallRate != null ? fmtPct(summary.overallRate) : '' ?></td>
+      <td></td>
+      <td class="text-right"><?= fmtNum(summary.periodPaymentTotal) ?></td>
+      <td></td>
+    </tr>
+  <? } ?>
+  </tbody>
+</table>
+
+<? if (p === pages.length - 1) { ?>
+<div class="footer-area">
+  <span>※ 出来高比率 = 出来高金額 ÷ 見積金額</span>
+  <span><?= pages.length > 1 ? (p + 1) + ' / ' + pages.length + ' ページ' : '' ?></span>
+</div>
+<? } else { ?>
+<div class="footer-area">
+  <span></span>
+  <span><?= (p + 1) + ' / ' + pages.length + ' ページ' ?></span>
+</div>
+<? } ?>
+
+<? } ?>
+</body>
+</html>

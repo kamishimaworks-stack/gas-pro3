@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
   <title>AI建築見積システム v10.0</title>
   
   <link rel="icon" href="https://drive.google.com/uc?export=view&id=169_3_Fc8Pbj5fkqX6_KHFb3lNJAKkKnA">
@@ -188,6 +188,159 @@
     .master-category { font-weight: bold; color: #00695c; margin-right: 4px; font-size: 12px; }
     
     /* 発注先カスタムドロップダウン */
+
+    /* ===== モバイル対応 ===== */
+    @media (max-width: 768px) {
+      body { font-size: 14px; margin-bottom: 70px; overflow-x: hidden; }
+      button, select { min-height: 44px; }
+      input, textarea, select { font-size: 16px !important; } /* iOS zoom防止 */
+      main { padding: 8px !important; }
+      .modal-content { width: 95% !important; max-width: none !important; }
+
+      /* ヘッダー簡略化 */
+      header { padding: 6px 10px !important; }
+      header .text-lg { font-size: 14px !important; }
+      header .text-lg span[style] { display: none; } /* バージョン非表示 */
+
+      /* ファンクションバー調整 */
+      .function-bar { bottom: 56px; flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 4px 6px; }
+      .f-btn { min-width: 60px; font-size: 11px; white-space: nowrap; flex-shrink: 0; padding: 4px 8px; }
+
+      /* メニュー画面 */
+      .menu-icon { font-size: 36px !important; }
+      .menu-title { font-size: 15px; }
+      .menu-btn { padding: 14px 10px; }
+
+      /* スプリットビュー → シングルパネル + ボトムシート */
+      .edit-split-wrapper { display: block !important; }
+      .edit-split-wrapper .edit-left-panel,
+      .edit-split-wrapper .edit-right-panel {
+        position: fixed !important;
+        bottom: 0 !important; left: 0 !important; right: 0 !important;
+        top: auto !important;
+        width: 100% !important; height: 70vh !important;
+        max-width: none !important; min-width: 0 !important;
+        z-index: 200;
+        border-radius: 16px 16px 0 0;
+        border: none !important;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.25);
+        transform: translateY(100%);
+        transition: transform 0.3s ease;
+        overflow-y: auto;
+        flex: none !important;
+      }
+      .edit-split-wrapper .edit-left-panel.is-open,
+      .edit-split-wrapper .edit-right-panel.is-open {
+        transform: translateY(0);
+      }
+
+      /* ボトムシート背景オーバーレイ */
+      .mobile-sheet-backdrop {
+        position: fixed; inset: 0;
+        background: rgba(0,0,0,0.4);
+        z-index: 199;
+      }
+
+      /* 見積ヘッダーフォーム 1カラム化 */
+      .edit-main .grid-cols-2 { grid-template-columns: 1fr !important; }
+      .edit-main .md\:grid-cols-3 { grid-template-columns: 1fr !important; }
+
+      /* 見積明細エリア: パディング縮小・はみ出し防止 */
+      .edit-main { padding: 8px !important; overflow-x: hidden; }
+
+      /* テーブル横スクロール（デスクトップ用フォールバック） */
+      .edit-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .edit-table-scroll table { min-width: 900px; }
+
+      /* 見積編集ヘッダーボタン折り返し */
+      .edit-header-actions { flex-wrap: wrap; gap: 4px !important; }
+      .edit-header-actions button { font-size: 10px !important; padding: 4px 6px !important; min-height: 36px; }
+
+      /* ツールバーは横スクロール */
+      .toolbar-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap !important; }
+      .toolbar-scroll button { flex-shrink: 0; }
+
+      /* 請求書画面 */
+      .invoice-grid { grid-template-columns: 1fr !important; height: auto !important; min-height: 0 !important; }
+      .invoice-grid > div { max-height: 50vh; }
+
+      /* 一覧画面 フィルター */
+      .filter-row { flex-direction: column; align-items: stretch !important; }
+
+      /* 管理画面サブタブ横スクロール */
+      .admin-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap !important; }
+      .admin-tabs button { flex-shrink: 0; white-space: nowrap; font-size: 12px; padding: 8px 12px; }
+
+      /* 統計カード */
+      .stat-card { padding: 6px; }
+      .stat-val { font-size: 16px; }
+      .stat-label { font-size: 11px; }
+
+      /* チャットボット モバイル配置 */
+      .chatbot-container {
+        left: auto !important; top: auto !important;
+        right: 16px !important; bottom: 120px !important;
+      }
+      .mobile-chat-fullscreen {
+        position: fixed !important;
+        inset: 0 !important;
+        width: 100dvw !important; height: 100dvh !important;
+        width: 100vw !important; height: calc(var(--app-vh, 1vh) * 100) !important;
+        max-height: none !important;
+        border-radius: 0 !important;
+        z-index: 4001;
+        margin: 0 !important;
+      }
+
+      /* フローティングパネル モバイル */
+      .floating-panel-container {
+        left: 0 !important; top: 0 !important;
+      }
+      .floating-panel-container > div {
+        width: 100vw !important; height: 100vh !important;
+        max-width: none !important; max-height: none !important;
+        border-radius: 0 !important;
+      }
+
+      /* タッチ最適化 */
+      .edit-left-panel-scroll,
+      .side-panel-content,
+      .modal-body {
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+      }
+
+      /* ボトムナビバー */
+      .mobile-bottom-nav {
+        position: fixed; bottom: 0; left: 0; right: 0;
+        background: #fff; border-top: 1px solid #ccc;
+        display: flex; justify-content: space-around; align-items: center;
+        z-index: 150; height: 56px;
+        box-shadow: 0 -2px 8px rgba(0,0,0,0.1);
+      }
+      .mobile-bottom-nav button {
+        flex: 1; display: flex; flex-direction: column; align-items: center;
+        justify-content: center; gap: 2px;
+        font-size: 10px; color: #666;
+        background: none; border: none; padding: 4px 0;
+        min-height: 56px; cursor: pointer; transition: color 0.2s;
+      }
+      .mobile-bottom-nav button.active { color: #004D40; font-weight: bold; }
+      .mobile-bottom-nav button .material-icons { font-size: 22px; }
+
+      /* 音声入力ボタン脈動アニメ */
+      @keyframes voice-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
+        50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+      }
+      .voice-listening { animation: voice-pulse 1.5s ease infinite; background-color: #ef4444 !important; }
+
+      /* モバイル見積カード */
+      .mobile-est-card { position: relative; touch-action: manipulation; }
+      .mobile-est-card .rotate-180 { transform: rotate(180deg); }
+      .mobile-card-list { padding: 4px; }
+      .mobile-card-list input, .mobile-card-list select { min-height: 36px; }
+    }
   </style>
   
   <script>
@@ -496,9 +649,9 @@
         <span class="font-bold text-lg">AI建築見積システム <span style="font-size: 10px; font-weight: normal;">v10.0</span></span>
       </div>
       <div class="text-xs flex gap-4 items-center">
-        <span>{{ userEmail }}</span>
+        <span :style="isMobile ? 'max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' : ''">{{ userEmail }}</span>
         <span v-if="auth.isAdmin" class="bg-yellow-500 text-black px-1 rounded">管理者</span>
-        <button v-if="currentTab !== 'menu'" @click="checkUnsavedChanges(() => goHome())" class="bg-white text-black px-2 py-1 rounded border border-gray-400 hover:bg-gray-200">メニュー</button>
+        <button v-if="currentTab !== 'menu' && !isMobile" @click="checkUnsavedChanges(() => goHome())" class="bg-white text-black px-2 py-1 rounded border border-gray-400 hover:bg-gray-200">メニュー</button>
       </div>
     </header>
 
@@ -541,6 +694,9 @@
                   <template v-else-if="r.type === 'payment_due'">
                     <span class="font-bold text-yellow-700">出金期日接近:</span> {{ r.label }} (あと{{ r.daysLeft }}日)
                   </template>
+                  <template v-else-if="r.type === 'monthly_close'">
+                    <span class="font-bold text-yellow-700">月次締め:</span> {{ r.label }}
+                  </template>
                 </span>
                 <span v-if="r.dueDate" class="text-xs text-gray-500">期日: {{ r.dueDate }}</span>
               </div>
@@ -552,25 +708,19 @@
 
           <div class="grid grid-cols-2 gap-4">
             <div>
-              <div class="menu-btn" @click="createNewEstimate">
+              <div class="menu-btn" @click="createNewEstimate(true)">
                 <span class="material-icons menu-icon text-blue-600">description</span>
                 <div class="menu-title">御見積書作成</div>
                 <div class="text-xs text-gray-500 mt-2">OCR取込、過去データ参照、新規作成。</div>
               </div>
-              <button @click="openEstimateHistoryFromMenu" class="w-full mt-2 bg-teal-50 text-teal-700 border border-teal-300 px-4 py-2 text-sm font-bold rounded hover:bg-teal-100 shadow-sm transition flex items-center justify-center gap-1">
-                <span class="material-icons text-base">history</span> 見積履歴
-              </button>
             </div>
 
             <div>
-              <div class="menu-btn" @click="handleNavigation('dedicated_order')">
+              <div class="menu-btn" @click="handleNavigation('dedicated_order', true)">
                 <span class="material-icons menu-icon text-orange-500">shopping_cart</span>
                 <div class="menu-title">発注書作成</div>
                 <div class="text-xs text-gray-500 mt-2">発注書作成（単独）</div>
               </div>
-              <button @click="openOrderHistoryFromMenu" class="w-full mt-2 bg-indigo-50 text-indigo-700 border border-indigo-300 px-4 py-2 text-sm font-bold rounded hover:bg-indigo-100 shadow-sm transition flex items-center justify-center gap-1">
-                <span class="material-icons text-base">history</span> 発注履歴
-              </button>
             </div>
             
             <div v-if="auth.isAdmin" class="menu-btn" @click="goToProjectList">
@@ -590,14 +740,449 @@
               <div class="menu-title">管理者画面</div>
               <div class="text-xs text-gray-500 mt-2">承認フロー、マスタ管理。</div>
             </div>
+
+            <div v-if="auth.isAdmin" class="menu-btn" @click="handleNavigation('master')">
+              <span class="material-icons menu-icon text-emerald-600">table_chart</span>
+              <div class="menu-title">マスタデータ編集</div>
+              <div class="text-xs text-gray-500 mt-2">各種マスタの閲覧・編集・追加・削除。</div>
+            </div>
+
+            <div class="menu-btn" @click="handleNavigation('progress')">
+              <span class="material-icons menu-icon text-cyan-600">trending_up</span>
+              <div class="menu-title">出来高報告</div>
+              <div class="text-xs text-gray-500 mt-2">工事出来高の進捗管理・月次締め・PDF出力。</div>
+            </div>
           </div>
+        </div>
+
+        <!-- 出来高報告一覧画面 -->
+        <div v-if="currentTab === 'progress'" class="space-y-4">
+          <!-- ヘッダーバー -->
+          <div class="flex justify-between items-center bg-white p-3 border border-gray-400 rounded shadow-sm" :class="isMobile ? 'flex-col gap-2' : ''">
+            <h2 class="font-bold text-lg flex items-center gap-2">
+              <span class="material-icons text-cyan-600">trending_up</span> 出来高報告一覧
+            </h2>
+            <div class="flex items-center gap-2">
+              <button @click="openProgressEdit('')" class="bg-cyan-600 text-white px-3 py-1.5 text-xs font-bold rounded hover:bg-cyan-700 transition flex items-center gap-1 shadow">
+                <span class="material-icons text-[14px]">add</span> 新規作成
+              </button>
+              <button @click="loadProgressReportList" :disabled="progressListLoading" class="bg-cyan-50 text-cyan-700 border border-cyan-300 px-3 py-1.5 text-xs font-bold rounded hover:bg-cyan-100 transition flex items-center gap-1">
+                <span class="material-icons text-[14px]" :class="{ 'animate-spin': progressListLoading }">refresh</span> 更新
+              </button>
+              <button @click="goHome" class="bg-gray-100 text-gray-700 border border-gray-300 px-3 py-1.5 text-xs font-bold rounded hover:bg-gray-200 transition flex items-center gap-1">
+                <span class="material-icons text-[14px]">home</span> ホーム
+              </button>
+            </div>
+          </div>
+
+          <!-- フィルタバー -->
+          <div class="flex items-center gap-3 bg-white p-3 border border-gray-200 rounded shadow-sm flex-wrap">
+            <div class="flex items-center gap-1">
+              <span class="text-xs text-gray-500 font-bold whitespace-nowrap">年:</span>
+              <select v-model="progressListFilter.year" @change="loadProgressReportList" class="border border-gray-300 rounded px-2 py-1 text-sm">
+                <option value="">全て</option>
+                <option v-for="y in [2024,2025,2026,2027,2028]" :key="y" :value="String(y)">{{ y }}年</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-1">
+              <span class="text-xs text-gray-500 font-bold whitespace-nowrap">月:</span>
+              <select v-model="progressListFilter.month" @change="loadProgressReportList" class="border border-gray-300 rounded px-2 py-1 text-sm">
+                <option value="">全て</option>
+                <option v-for="m in 12" :key="m" :value="String(m)">{{ m }}月</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-1">
+              <span class="text-xs text-gray-500 font-bold whitespace-nowrap">発注先:</span>
+              <select v-model="progressListFilter.vendor" class="border border-gray-300 rounded px-2 py-1 text-sm">
+                <option value="">全て</option>
+                <option v-for="v in progressListVendors" :key="v" :value="v">{{ v }}</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-1">
+              <span class="text-xs text-gray-500 font-bold whitespace-nowrap">工事名:</span>
+              <input v-model="progressListFilter.project" placeholder="工事名で検索" class="border border-gray-300 rounded px-2 py-1 text-sm w-32">
+            </div>
+          </div>
+
+          <!-- サマリーカード -->
+          <div class="grid grid-cols-2 gap-3" :class="isMobile ? 'grid-cols-1' : 'md:grid-cols-4'">
+            <div class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+              <div class="text-xs text-gray-500 mb-1">見積合計</div>
+              <div class="text-lg font-bold text-gray-800">{{ formatCurrency(progressListSummary.estimateTotal) }}<span class="text-xs font-normal ml-1">円</span></div>
+            </div>
+            <div class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+              <div class="text-xs text-gray-500 mb-1">出来高合計</div>
+              <div class="text-lg font-bold text-blue-700">{{ formatCurrency(progressListSummary.progressTotal) }}<span class="text-xs font-normal ml-1">円</span></div>
+            </div>
+            <div class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+              <div class="text-xs text-gray-500 mb-1">全体進捗率</div>
+              <div class="text-lg font-bold" :class="progressListSummary.overallRate >= 1 ? 'text-green-600' : 'text-cyan-700'">
+                {{ (progressListSummary.overallRate * 100).toFixed(2) }}<span class="text-xs font-normal ml-1">%</span>
+              </div>
+              <div class="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                <div class="h-1.5 rounded-full transition-all" :class="progressGetRateColor(progressListSummary.overallRate)" :style="{ width: progressGetRatePct(progressListSummary.overallRate) + '%' }"></div>
+              </div>
+            </div>
+            <div class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+              <div class="text-xs text-gray-500 mb-1">今回支払合計</div>
+              <div class="text-lg font-bold text-orange-700">{{ formatCurrency(progressListSummary.periodPaymentTotal) }}<span class="text-xs font-normal ml-1">円</span></div>
+            </div>
+          </div>
+
+          <!-- ローディング -->
+          <div v-if="progressListLoading" class="text-center py-12 text-gray-500">
+            <span class="material-icons text-4xl animate-spin">autorenew</span>
+            <p class="mt-2 text-sm">読み込み中...</p>
+          </div>
+
+          <!-- 報告書テーブル -->
+          <template v-if="!progressListLoading">
+            <div v-if="filteredProgressReports.length === 0" class="text-center py-12 bg-white border border-gray-200 rounded-lg">
+              <span class="material-icons text-4xl text-gray-300">assignment</span>
+              <p class="text-gray-500 mt-2 text-sm">報告書がありません</p>
+              <p class="text-gray-400 text-xs mt-1">「新規作成」ボタンから報告書を作成してください</p>
+            </div>
+
+            <!-- デスクトップ: テーブル -->
+            <div v-else-if="!isMobile" class="edit-table-scroll" style="max-height: calc(100vh - 500px); min-height: 200px; border: 1px solid #999;">
+              <table class="grid-legacy w-full" style="min-width:900px;">
+                <thead style="position: sticky; top: 0; z-index: 10;">
+                  <tr>
+                    <th style="width:90px;">発注ID</th>
+                    <th style="width:120px;">発注先</th>
+                    <th style="width:160px;">工事名</th>
+                    <th style="width:50px;">品目数</th>
+                    <th style="width:100px;">見積合計</th>
+                    <th style="width:100px;">出来高合計</th>
+                    <th style="width:60px;">進捗率</th>
+                    <th style="width:100px;">今回支払</th>
+                    <th style="width:60px;">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="r in filteredProgressReports" :key="r.orderId" class="cursor-pointer hover:bg-cyan-50 transition" @click="openProgressEdit(r.orderId)">
+                    <td class="px-2 text-xs font-mono text-cyan-700 font-bold">{{ r.orderId || '(未設定)' }}</td>
+                    <td class="px-2 text-xs truncate" :title="getOrderVendor(r.orderId)">{{ getOrderVendor(r.orderId) || '-' }}</td>
+                    <td class="px-2 text-xs truncate" :title="(r.headerInfo && r.headerInfo.projectName) || getOrderProject(r.orderId)">{{ (r.headerInfo && r.headerInfo.projectName) || getOrderProject(r.orderId) || '-' }}</td>
+                    <td class="num-cell text-xs">{{ r.itemCount }}</td>
+                    <td class="num-cell text-xs font-mono">{{ formatCurrency(r.estimateTotal) }}</td>
+                    <td class="num-cell text-xs font-mono text-blue-700 font-bold">{{ formatCurrency(r.progressTotal) }}</td>
+                    <td class="num-cell text-xs relative" style="padding-right:4px;">
+                      <span class="font-bold" :class="r.overallRate >= 1 ? 'text-green-600' : 'text-cyan-700'">{{ (r.overallRate * 100).toFixed(2) }}%</span>
+                      <div class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200">
+                        <div class="h-1 transition-all" :class="progressGetRateColor(r.overallRate)" :style="{ width: progressGetRatePct(r.overallRate) + '%' }"></div>
+                      </div>
+                    </td>
+                    <td class="num-cell text-xs font-mono text-orange-700 font-bold">{{ formatCurrency(r.periodPaymentTotal) }}</td>
+                    <td class="text-center">
+                      <button @click.stop="openProgressEdit(r.orderId)" class="text-cyan-600 hover:text-cyan-800 text-xs font-bold">
+                        <span class="material-icons text-[16px]">edit</span>
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- モバイル: カード -->
+            <div v-else class="space-y-2">
+              <div v-for="r in filteredProgressReports" :key="r.orderId" @click="openProgressEdit(r.orderId)"
+                class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm cursor-pointer hover:bg-cyan-50 transition">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="text-xs font-mono text-cyan-700 font-bold">{{ r.orderId || '(未設定)' }}</span>
+                </div>
+                <div class="text-sm font-bold text-gray-800 truncate">{{ (r.headerInfo && r.headerInfo.projectName) || getOrderProject(r.orderId) || '-' }}</div>
+                <div class="text-xs text-gray-500 truncate">{{ getOrderVendor(r.orderId) || '-' }}</div>
+                <div class="flex items-center gap-3 mt-2">
+                  <span class="text-xs text-gray-500">見積: <b>{{ formatCurrency(r.estimateTotal) }}</b></span>
+                  <span class="text-xs text-blue-600">出来高: <b>{{ formatCurrency(r.progressTotal) }}</b></span>
+                  <span class="text-xs font-bold" :class="r.overallRate >= 1 ? 'text-green-600' : 'text-cyan-700'">{{ (r.overallRate * 100).toFixed(2) }}%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-1.5 mt-1.5">
+                  <div class="h-1.5 rounded-full transition-all" :class="progressGetRateColor(r.overallRate)" :style="{ width: progressGetRatePct(r.overallRate) + '%' }"></div>
+                </div>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <!-- 出来高報告 編集画面 -->
+        <div v-if="currentTab === 'progress_edit'" class="space-y-4">
+          <!-- ヘッダーバー -->
+          <div class="flex justify-between items-center bg-white p-3 border border-gray-400 rounded shadow-sm" :class="isMobile ? 'flex-col gap-2' : ''">
+            <h2 class="font-bold text-lg flex items-center gap-2">
+              <span class="material-icons text-cyan-600">trending_up</span> 出来高報告 編集
+              <span v-if="progressEditOrderId" class="text-sm font-mono text-gray-500 ml-2">{{ progressEditOrderId }}</span>
+            </h2>
+            <div class="flex items-center gap-2 flex-wrap">
+              <!-- 報告月セレクタ -->
+              <div class="flex items-center gap-1 bg-cyan-50 border border-cyan-200 rounded px-2 py-1">
+                <span class="text-xs text-cyan-700 font-bold whitespace-nowrap">報告月:</span>
+                <select v-model="progressEditYear" @change="onProgressMonthChange" class="border border-cyan-300 rounded px-1 py-0.5 text-sm bg-white">
+                  <option v-for="y in [2024,2025,2026,2027,2028]" :key="y" :value="String(y)">{{ y }}年</option>
+                </select>
+                <select v-model="progressEditMonth" @change="onProgressMonthChange" class="border border-cyan-300 rounded px-1 py-0.5 text-sm bg-white">
+                  <option v-for="m in 12" :key="m" :value="String(m)">{{ m }}月</option>
+                </select>
+              </div>
+              <!-- 月締めボタン -->
+              <button @click="progressMonthlyClose" :disabled="progressSaving || !progressEditOrderId || !progressEditYM" class="bg-orange-600 text-white px-3 py-1.5 text-xs font-bold rounded hover:bg-orange-700 transition disabled:opacity-50 flex items-center gap-1">
+                <span class="material-icons text-[14px]">published_with_changes</span> 月締め
+              </button>
+              <button @click="openFloatingPanelList('order', 'progress')" class="bg-indigo-50 text-indigo-700 border border-indigo-300 px-3 py-1.5 text-xs font-bold rounded hover:bg-indigo-100 shadow-sm transition flex items-center gap-1">
+                <span class="material-icons text-[14px]">history</span> 発注履歴
+              </button>
+              <button @click="progressBackToList" class="bg-gray-100 text-gray-700 border border-gray-300 px-3 py-1.5 text-xs font-bold rounded hover:bg-gray-200 transition flex items-center gap-1">
+                <span class="material-icons text-[14px]">arrow_back</span> 一覧に戻る
+              </button>
+            </div>
+          </div>
+
+          <!-- 発注未選択時メッセージ -->
+          <div v-if="!progressEditOrderId && progressItems.length === 0 && !progressLoading" class="text-center py-12 bg-white border border-gray-200 rounded-lg">
+            <span class="material-icons text-4xl text-gray-300">assignment</span>
+            <p class="text-gray-500 mt-2 text-sm">発注が選択されていません</p>
+            <p class="text-gray-400 text-xs mt-1">「発注履歴」から発注を選択してください</p>
+            <button @click="openFloatingPanelList('order', 'progress')" class="mt-4 bg-indigo-500 text-white px-4 py-2 text-sm font-bold rounded hover:bg-indigo-600 transition flex items-center gap-1 mx-auto">
+              <span class="material-icons text-[16px]">history</span> 発注履歴を開く
+            </button>
+          </div>
+
+          <!-- ローディング -->
+          <div v-if="progressLoading" class="text-center py-12 text-gray-500">
+            <span class="material-icons text-4xl animate-spin">autorenew</span>
+            <p class="mt-2 text-sm">読み込み中...</p>
+          </div>
+
+          <template v-if="!progressLoading && (progressEditOrderId || progressItems.length > 0)">
+            <!-- 報告書ヘッダーフォーム -->
+            <div class="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+              <h3 class="font-bold text-sm text-gray-800 mb-3 flex items-center gap-1">
+                <span class="material-icons text-[16px] text-cyan-600">description</span> 報告書ヘッダー情報
+              </h3>
+              <div class="grid gap-3" :class="isMobile ? 'grid-cols-1' : 'grid-cols-2 lg:grid-cols-4'">
+                <div>
+                  <label class="text-xs text-gray-600 font-bold block mb-1">工事番号</label>
+                  <input v-model="progressReportForm.projectNo" class="border border-gray-300 rounded px-2 py-1.5 text-sm w-full">
+                </div>
+                <div>
+                  <label class="text-xs text-gray-600 font-bold block mb-1">受注金額</label>
+                  <input v-model="progressReportForm.contractAmount" type="number" class="border border-gray-300 rounded px-2 py-1.5 text-sm w-full">
+                </div>
+                <div>
+                  <label class="text-xs text-gray-600 font-bold block mb-1">工事名</label>
+                  <input v-model="progressReportForm.projectName" class="border border-gray-300 rounded px-2 py-1.5 text-sm w-full">
+                </div>
+                <div>
+                  <label class="text-xs text-gray-600 font-bold block mb-1">工事場所</label>
+                  <input v-model="progressReportForm.location" class="border border-gray-300 rounded px-2 py-1.5 text-sm w-full">
+                </div>
+                <div>
+                  <label class="text-xs text-gray-600 font-bold block mb-1">受渡先</label>
+                  <input v-model="progressReportForm.deliveryTo" class="border border-gray-300 rounded px-2 py-1.5 text-sm w-full">
+                </div>
+                <div>
+                  <label class="text-xs text-gray-600 font-bold block mb-1">工期</label>
+                  <input v-model="progressReportForm.constructionPeriod" class="border border-gray-300 rounded px-2 py-1.5 text-sm w-full">
+                </div>
+                <div>
+                  <label class="text-xs text-gray-600 font-bold block mb-1">担当者</label>
+                  <input v-model="progressReportForm.personInCharge" class="border border-gray-300 rounded px-2 py-1.5 text-sm w-full">
+                </div>
+              </div>
+            </div>
+
+            <!-- サマリーカード -->
+            <div class="grid grid-cols-2 gap-3" :class="isMobile ? 'grid-cols-1' : 'md:grid-cols-4'">
+              <div class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+                <div class="text-xs text-gray-500 mb-1">見積合計</div>
+                <div class="text-lg font-bold text-gray-800">{{ formatCurrency(progressSummary.estimateTotal) }}<span class="text-xs font-normal ml-1">円</span></div>
+              </div>
+              <div class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+                <div class="text-xs text-gray-500 mb-1">出来高合計</div>
+                <div class="text-lg font-bold text-blue-700">{{ formatCurrency(progressSummary.progressTotal) }}<span class="text-xs font-normal ml-1">円</span></div>
+              </div>
+              <div class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+                <div class="text-xs text-gray-500 mb-1">全体進捗率</div>
+                <div class="text-lg font-bold" :class="progressSummary.overallRate >= 1 ? 'text-green-600' : 'text-cyan-700'">
+                  {{ (progressSummary.overallRate * 100).toFixed(2) }}<span class="text-xs font-normal ml-1">%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                  <div class="h-1.5 rounded-full transition-all" :class="progressGetRateColor(progressSummary.overallRate)" :style="{ width: progressGetRatePct(progressSummary.overallRate) + '%' }"></div>
+                </div>
+              </div>
+              <div class="bg-white border border-gray-200 rounded-lg p-3 shadow-sm">
+                <div class="text-xs text-gray-500 mb-1">今回支払合計</div>
+                <div class="text-lg font-bold text-orange-700">{{ formatCurrency(progressSummary.periodPaymentTotal) }}<span class="text-xs font-normal ml-1">円</span></div>
+              </div>
+            </div>
+
+            <!-- アクションバー -->
+            <div class="flex items-center justify-between px-1">
+              <span class="text-xs text-gray-500">{{ progressItems.length }}件</span>
+              <div class="flex items-center gap-2">
+                <button @click="progressBatchSave" :disabled="progressSaving || progressDirtyRows.size === 0"
+                  class="px-3 py-1.5 text-xs font-bold rounded transition flex items-center gap-1"
+                  :class="progressDirtyRows.size > 0 ? 'bg-cyan-600 text-white hover:bg-cyan-700 shadow' : 'bg-gray-200 text-gray-400 cursor-not-allowed'">
+                  <span v-if="progressSaving" class="material-icons text-[14px] animate-spin">autorenew</span>
+                  <span v-else class="material-icons text-[14px]">save</span>
+                  一括保存<span v-if="progressDirtyRows.size > 0">({{ progressDirtyRows.size }})</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- デスクトップ: テーブル編集 -->
+            <div v-if="!isMobile" class="edit-table-scroll" style="max-height: calc(100vh - 600px); min-height: 200px; border: 1px solid #999;">
+              <table class="grid-legacy w-full" style="min-width:1080px;">
+                <thead style="position: sticky; top: 0; z-index: 10;">
+                  <tr>
+                    <th rowspan="2" style="width:30px;">#</th>
+                    <th rowspan="2" style="width:140px;">品名</th>
+                    <th rowspan="2" style="width:100px;">仕様</th>
+                    <th rowspan="2" style="width:70px;">全体数量</th>
+                    <th rowspan="2" style="width:40px;">単位</th>
+                    <th rowspan="2" style="width:80px;">単価</th>
+                    <th rowspan="2" style="width:90px;">見積金額</th>
+                    <th colspan="3" class="bg-cyan-100 text-cyan-900 border-l border-r border-cyan-300">累積出来高</th>
+                    <th colspan="2" class="bg-orange-100 text-orange-900 border-l border-r border-orange-300">今回支払</th>
+                    <th rowspan="2" style="width:28px;"></th>
+                  </tr>
+                  <tr>
+                    <th style="width:80px;" class="bg-cyan-50">数量</th>
+                    <th style="width:90px;" class="bg-cyan-50">金額</th>
+                    <th style="width:60px;" class="bg-cyan-50">比率</th>
+                    <th style="width:70px;" class="bg-orange-50">数量</th>
+                    <th style="width:90px;" class="bg-orange-50">金額</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(item, idx) in progressItems" :key="item.rowIndex"
+                    :class="{ 'bg-yellow-50': progressDirtyRows.has(item.rowIndex) }">
+                    <td class="text-center bg-gray-100 text-xs">{{ item.no }}</td>
+                    <td class="px-1 text-xs font-bold truncate" :title="item.name">{{ item.name }}</td>
+                    <td class="px-1 text-xs text-gray-600 truncate" :title="item.spec">{{ item.spec }}</td>
+                    <td class="num-cell text-xs">{{ item.totalQty }}</td>
+                    <td class="text-center text-xs">{{ item.unit }}</td>
+                    <td class="num-cell text-xs">{{ formatCurrency(item.price) }}</td>
+                    <td class="num-cell text-xs font-mono bg-blue-50 font-bold">{{ item.estimateAmtDisp }}</td>
+                    <!-- 累積数量（自動計算） -->
+                    <td class="num-cell text-xs bg-cyan-50">{{ item.currCumQty }}</td>
+                    <td class="num-cell text-xs font-mono bg-cyan-50">{{ item.progressAmtDisp }}</td>
+                    <td class="num-cell text-xs bg-cyan-50 relative" style="padding-right:4px;">
+                      <span class="font-bold" :class="Number(item.progressRate) >= 1 ? 'text-green-600' : 'text-cyan-700'">{{ item.progressRateDisp }}</span>
+                      <div class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200">
+                        <div class="h-1 transition-all" :class="progressGetRateColor(item.progressRate)" :style="{ width: progressGetRatePct(item.progressRate) + '%' }"></div>
+                      </div>
+                    </td>
+                    <!-- 今回数量（編集可） -->
+                    <td style="background:#FFF3E0; padding:0;">
+                      <num-input :model-value="item.periodQty"
+                        @update:model-value="v => { item.periodQty = v; progressCalcLine(item); }"
+                        class="input-cell num-cell" :data-row="idx" data-col="0" @keydown="cellNav($event)" />
+                    </td>
+                    <td class="num-cell text-xs font-mono bg-orange-50 font-bold">{{ item.periodPaymentDisp }}</td>
+                    <td class="text-center"><button @click.stop="progressDeleteRow(item.rowIndex, item.name)" class="text-gray-400 hover:text-red-500 text-sm font-bold">&times;</button></td>
+                  </tr>
+                  <!-- 合計行 -->
+                  <tr class="bg-gray-100 font-bold border-t-2 border-gray-400">
+                    <td colspan="6" class="text-right px-2 text-xs">合計</td>
+                    <td class="num-cell text-xs font-mono">{{ formatCurrency(progressSummary.estimateTotal) }}</td>
+                    <td class="num-cell text-xs bg-cyan-100"></td>
+                    <td class="num-cell text-xs font-mono bg-cyan-100">{{ formatCurrency(progressSummary.progressTotal) }}</td>
+                    <td class="num-cell text-xs bg-cyan-100">
+                      <span :class="progressSummary.overallRate >= 1 ? 'text-green-600' : 'text-cyan-700'">{{ (progressSummary.overallRate * 100).toFixed(2) }}%</span>
+                    </td>
+                    <td class="num-cell text-xs"></td>
+                    <td class="num-cell text-xs font-mono bg-orange-100">{{ formatCurrency(progressSummary.periodPaymentTotal) }}</td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- モバイル: カード展開型 -->
+            <div v-if="isMobile" class="space-y-2">
+              <div v-for="(item, idx) in progressItems" :key="item.rowIndex"
+                class="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
+                <div @click="toggleProgressExpand(idx)" class="p-3 cursor-pointer hover:bg-gray-50 transition">
+                  <div class="flex items-center justify-between">
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class="text-xs text-gray-400 font-mono">{{ item.no }}</span>
+                        <span class="font-bold text-sm text-gray-800 truncate">{{ item.name }}</span>
+                        <span v-if="item.spec" class="text-xs text-gray-500 truncate">{{ item.spec }}</span>
+                      </div>
+                      <div class="flex items-center gap-3 mt-1.5">
+                        <span class="text-xs text-gray-500">見積: <b>{{ item.estimateAmtDisp }}</b></span>
+                        <span class="text-xs text-blue-600">出来高: <b>{{ item.progressAmtDisp }}</b></span>
+                        <span class="text-xs text-orange-600">今回: <b>{{ item.periodPaymentDisp }}</b></span>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-2 ml-2">
+                      <div class="text-right">
+                        <div class="text-sm font-bold" :class="Number(item.progressRate) >= 1 ? 'text-green-600' : 'text-cyan-700'">{{ item.progressRateDisp }}</div>
+                      </div>
+                      <span class="material-icons text-gray-400 text-lg transition-transform" :class="{ 'rotate-180': progressExpandedIdx === idx }">expand_more</span>
+                    </div>
+                  </div>
+                  <div class="w-full bg-gray-200 rounded-full h-1.5 mt-2">
+                    <div class="h-1.5 rounded-full transition-all" :class="progressGetRateColor(item.progressRate)" :style="{ width: progressGetRatePct(item.progressRate) + '%' }"></div>
+                  </div>
+                </div>
+                <div v-if="progressExpandedIdx === idx" class="border-t border-gray-100 bg-gray-50 p-3">
+                  <div class="grid gap-2 text-xs grid-cols-2">
+                    <div><span class="text-gray-500">全体数量:</span> <b>{{ item.totalQty }}</b> {{ item.unit }}</div>
+                    <div><span class="text-gray-500">単価:</span> <b>{{ formatCurrency(item.price) }}</b> 円</div>
+                    <div><span class="text-gray-500">前月末累積:</span> <b>{{ item.prevCumQty }}</b></div>
+                    <div><span class="text-gray-500">累積数量:</span> <b>{{ item.currCumQty }}</b></div>
+                  </div>
+                  <div class="mt-3 flex items-center gap-2">
+                    <label class="text-xs text-gray-600 font-bold whitespace-nowrap">今回数量:</label>
+                    <input type="number" v-model="progressEditQty" class="border border-gray-300 rounded px-2 py-1 text-sm w-28" step="any">
+                    <span class="text-xs text-gray-500">{{ item.unit }}</span>
+                    <button @click="saveProgressCumQty(idx)" :disabled="progressSaving" class="bg-cyan-600 text-white px-3 py-1 text-xs font-bold rounded hover:bg-cyan-700 transition disabled:opacity-50">
+                      <span class="material-icons text-[13px] align-middle">save</span> 保存
+                    </button>
+                  </div>
+                  <div class="flex items-center gap-2 mt-2">
+                    <button @click="progressDeleteRow(item.rowIndex, item.name)" class="text-red-400 hover:text-red-600 text-xs flex items-center gap-1 transition">
+                      <span class="material-icons text-[14px]">delete</span> 削除
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 保存 / PDF出力ボタン -->
+            <div class="fixed bottom-16 right-4 flex flex-col gap-2 z-50">
+              <button @click="progressSaveAll" :disabled="progressSaving"
+                class="bg-cyan-600 text-white px-5 py-2.5 rounded-lg shadow-lg hover:bg-cyan-700 transition disabled:opacity-50 flex items-center gap-2 font-bold text-sm">
+                <span v-if="progressSaving" class="material-icons text-[18px] animate-spin">autorenew</span>
+                <span v-else class="material-icons text-[18px]">save</span> 保存
+              </button>
+              <button @click="progressGeneratePdf" :disabled="progressSaving || progressItems.length === 0"
+                class="bg-orange-600 text-white px-5 py-2.5 rounded-lg shadow-lg hover:bg-orange-700 transition disabled:opacity-50 flex items-center gap-2 font-bold text-sm">
+                <span v-if="progressSaving" class="material-icons text-[18px] animate-spin">autorenew</span>
+                <span v-else class="material-icons text-[18px]">picture_as_pdf</span> PDF出力
+              </button>
+            </div>
+
+            <!-- PDF結果 -->
+            <div v-if="progressPdfResult" class="bg-green-50 border border-green-200 rounded p-3">
+              <div class="flex items-center gap-2">
+                <span class="material-icons text-green-600">check_circle</span>
+                <span class="text-sm font-bold text-green-800">{{ progressPdfResult.fileName }}</span>
+              </div>
+              <a :href="progressPdfResult.url" target="_blank" rel="noopener" class="text-xs text-blue-600 underline hover:text-blue-800 mt-1 inline-block">PDFを開く</a>
+            </div>
+          </template>
         </div>
 
         <!-- Phase 4: 発注書作成専用画面 -->
         <div v-if="currentTab === 'dedicated_order'" class="space-y-4">
-            <div class="flex justify-between items-center bg-white p-3 border border-gray-400 rounded shadow-sm">
+            <div class="flex justify-between items-center bg-white p-3 border border-gray-400 rounded shadow-sm" :class="isMobile ? 'flex-col gap-2' : ''">
                 <h2 class="font-bold text-lg flex items-center gap-2"><span class="material-icons text-orange-600">edit_note</span> 発注書編集</h2>
-                <div class="flex items-center gap-2">
+                <div class="edit-header-actions flex items-center gap-2">
                     <button @click="openFloatingPanelList('estimate', 'order')" class="bg-teal-50 text-teal-700 border border-teal-300 px-4 py-1.5 text-xs font-bold rounded hover:bg-teal-100 shadow-sm transition flex items-center gap-1">
                         <span class="material-icons text-[14px]">description</span> 見積履歴
                     </button>
@@ -617,13 +1202,13 @@
               <!-- 左パネル (単価マスタ/材料費単価) - 発注書作成用 -->
               <div class="edit-left-panel" :class="{ 'is-open': leftPanelMode !== null && leftPanelContext === 'dedicated_order' }">
                   <div class="bg-gray-100 border-b border-gray-300 flex justify-between items-center px-2 py-1">
-                    <span class="font-bold text-sm text-gray-700">{{ leftPanelMode === 'price' ? '単価マスタ選択' : leftPanelMode === 'material' ? '材料費単価マスタ' : '元請見積履歴' }}</span>
+                    <span class="font-bold text-sm text-gray-700">{{ leftPanelMode === 'price' ? '単価マスタ選択' : leftPanelMode === 'material' ? '材料費単価マスタ' : leftPanelMode === 'material_incl' ? '材料（施工込）単価' : '元請見積履歴' }}</span>
                     <button @click="closeLeftPanel" class="text-gray-500 hover:text-gray-800 font-bold text-lg px-2">×</button>
                   </div>
                   <div class="p-2 border-b bg-white">
                     <input v-if="leftPanelMode === 'price'" v-model="searchMasterKeyword" class="w-full border p-1 text-xs" placeholder="品名・仕様・企業名・基本など スペースでAND検索">
                     <input v-if="leftPanelMode === 'set'" v-model="searchSetKeyword" class="w-full border p-1 text-xs" placeholder="セット名で検索...">
-                    <input v-if="leftPanelMode === 'material'" v-model="searchMaterialKeyword" class="w-full border p-1 text-xs" placeholder="品名・仕様・単位 スペースでAND検索">
+                    <input v-if="leftPanelMode === 'material' || leftPanelMode === 'material_incl'" v-model="searchMaterialKeyword" class="w-full border p-1 text-xs" placeholder="品名・仕様・単位 スペースでAND検索">
                   </div>
                   <div class="edit-left-panel-scroll bg-gray-50 p-2">
                     <div v-if="leftPanelMode === 'price'">
@@ -659,10 +1244,15 @@
                       </div>
                     </div>
 
-                    <div v-if="leftPanelMode === 'material'">
-                      <button v-if="materialEditIdx !== 'new'" @click="openMaterialAdd" class="w-full bg-teal-600 text-white text-xs py-1.5 rounded hover:bg-teal-700 flex items-center justify-center gap-1 mb-2">
-                        <span class="material-icons" style="font-size:14px">add</span>新規追加
-                      </button>
+                    <div v-if="leftPanelMode === 'material' || leftPanelMode === 'material_incl'">
+                      <div class="flex gap-1 mb-2">
+                        <button v-if="materialEditIdx !== 'new'" @click="openMaterialAdd" class="flex-1 bg-teal-600 text-white text-xs py-1.5 rounded hover:bg-teal-700 flex items-center justify-center gap-1">
+                          <span class="material-icons" style="font-size:14px">add</span>新規追加
+                        </button>
+                        <button @click="clearAllMaterialPrices" class="bg-red-100 text-red-700 text-xs px-2 py-1.5 rounded hover:bg-red-200 flex items-center gap-0.5" title="全データ削除">
+                          <span class="material-icons" style="font-size:14px">delete_sweep</span>全クリア
+                        </button>
+                      </div>
                       <!-- 新規追加カード -->
                       <div v-if="materialEditIdx === 'new'" class="bg-white mb-2 rounded shadow-sm overflow-hidden border-2 border-teal-400">
                         <div class="grid grid-cols-3 gap-0 border-b border-gray-200">
@@ -828,7 +1418,14 @@
                         </thead>
                         <tbody @input.capture="isDirty=true" @change.capture="isDirty=true">
                             <tr v-for="(item, i) in dedicatedOrderForm.items" :key="i"
-                                :class="{ 'bg-blue-100': item.selected, 'hover:bg-gray-50': !item.selected }"
+                                draggable="true"
+                                @dragstart="onRowDragStart($event, i, 'dedicated')"
+                                @dragover.prevent="onRowDragOver($event, i)"
+                                @drop="onRowDrop($event, i)"
+                                @dragend="onRowDragEnd($event)"
+                                :class="{ 'bg-blue-100': item.selected, 'hover:bg-gray-50': !item.selected,
+                                  'border-t-2 border-indigo-400': dragState.dragging && dragState.toIdx === i && i < dragState.fromIdx,
+                                  'border-b-2 border-indigo-400': dragState.dragging && dragState.toIdx === i && i >= dragState.fromIdx }"
                                 @contextmenu.prevent="onRowContextMenu($event, i, 'dedicated')">
                                 <td class="text-center" style="cursor:pointer; user-select:none;">
                                   <input type="checkbox" v-model="item.selected" @click.stop tabindex="-1">
@@ -882,7 +1479,7 @@
           <!-- 見積案件一覧タブ -->
           <div v-if="listSubTab==='estimate'">
             <div class="bg-white p-4 border border-gray-400 rounded shadow-sm">
-              <div class="flex flex-wrap gap-4 items-end mb-4">
+              <div class="filter-row flex flex-wrap gap-4 items-end mb-4">
                 <div><label class="text-[10px] block font-bold">表示年</label><select v-model="filter.year" class="border p-1 text-xs w-24 bg-gray-50"><option value="">全て</option><option v-for="y in years" :key="y" :value="y">{{y}}年</option></select></div>
                 <div><label class="text-[10px] block font-bold">表示月</label><select v-model="filter.month" class="border p-1 text-xs w-24 bg-gray-50"><option value="">全て</option><option v-for="m in 12" :key="m" :value="m">{{m}}月</option></select></div>
                 <div><label class="text-[10px] block font-bold">元請企業</label><select v-model="filter.client" class="border p-1 text-xs w-40 bg-gray-50"><option value="">全ての元請</option><option v-for="c in masters.clients" :key="c" :value="c">{{c}}</option></select></div>
@@ -1001,16 +1598,16 @@
         
         <!-- 編集画面(見積) -->
         <div v-if="currentTab === 'edit'" class="space-y-4">
-          <div class="flex justify-between items-center bg-white p-3 border border-gray-400 rounded shadow-sm">
+          <div class="flex justify-between items-center bg-white p-3 border border-gray-400 rounded shadow-sm" :class="isMobile ? 'flex-col gap-2' : ''">
              <h2 class="font-bold text-lg flex items-center gap-2"><span class="material-icons text-blue-600">edit_note</span> 見積編集</h2>
-             <div class="flex items-center gap-2">
+             <div class="edit-header-actions flex items-center gap-2">
                <button @click="toggleSidePanel('order')" class="bg-orange-50 text-orange-700 border border-orange-300 px-3 py-1.5 text-xs font-bold rounded hover:bg-orange-100 shadow-sm transition flex items-center gap-1">
-                  <span class="material-icons text-[14px]">shopping_cart</span> 発注書修正
+                  <span class="material-icons text-[14px]">shopping_cart</span><span v-if="!isMobile"> 発注書修正</span><span v-else>発注</span>
                </button>
                <button @click="openFloatingPanelList('estimate', 'estimate')" class="bg-teal-50 text-teal-700 border border-teal-300 px-3 py-1.5 text-xs font-bold rounded hover:bg-teal-100 shadow-sm transition flex items-center gap-1">
-                  <span class="material-icons text-[14px]">description</span> 見積履歴
+                  <span class="material-icons text-[14px]">description</span><span v-if="!isMobile"> 見積履歴</span><span v-else>履歴</span>
                </button>
-               <button @click="openFloatingPanelList('order', 'estimate')" class="bg-indigo-50 text-indigo-700 border border-indigo-300 px-3 py-1.5 text-xs font-bold rounded hover:bg-indigo-100 shadow-sm transition flex items-center gap-1">
+               <button v-if="!isMobile" @click="openFloatingPanelList('order', 'estimate')" class="bg-indigo-50 text-indigo-700 border border-indigo-300 px-3 py-1.5 text-xs font-bold rounded hover:bg-indigo-100 shadow-sm transition flex items-center gap-1">
                   <span class="material-icons text-[14px]">local_shipping</span> 発注履歴
                </button>
 
@@ -1018,10 +1615,10 @@
                   <span class="material-icons text-[14px]">arrow_back</span> 戻る
                </button>
                <button @click="clearEstimateForm" class="bg-red-50 text-red-700 border border-red-300 px-4 py-1.5 text-xs font-bold rounded hover:bg-red-100 shadow-sm transition flex items-center gap-1">
-                  <span class="material-icons text-[14px]">delete_sweep</span> クリア
+                  <span class="material-icons text-[14px]">delete_sweep</span><span v-if="!isMobile"> クリア</span>
                </button>
                <button v-if="formSnapshot && formSnapshot.source === 'edit'" @click="restoreSnapshot" class="bg-blue-50 text-blue-700 border border-blue-300 px-4 py-1.5 text-xs font-bold rounded hover:bg-blue-100 shadow-sm transition flex items-center gap-1">
-                  <span class="material-icons text-[14px]">undo</span> 元に戻す
+                  <span class="material-icons text-[14px]">undo</span><span v-if="!isMobile"> 元に戻す</span>
                </button>
              </div>
           </div>
@@ -1031,7 +1628,7 @@
               <div class="edit-left-panel" :class="{ 'is-open': leftPanelMode !== null && leftPanelContext === 'estimate' }">
                   <div class="bg-gray-100 border-b border-gray-300 flex justify-between items-center px-2 py-1">
                     <span class="font-bold text-sm text-gray-700">
-                      {{ leftPanelMode === 'price' ? '単価マスタ選択' : leftPanelMode === 'material' ? '材料費単価マスタ' : '元請見積履歴' }}
+                      {{ leftPanelMode === 'price' ? '単価マスタ選択' : leftPanelMode === 'material' ? '材料費単価マスタ' : leftPanelMode === 'material_incl' ? '材料（施工込）単価' : '元請見積履歴' }}
                     </span>
                     <button @click="closeLeftPanel" class="text-gray-500 hover:text-gray-800 font-bold text-lg px-2">×</button>
                   </div>
@@ -1039,7 +1636,7 @@
                   <div class="p-2 border-b bg-white">
                     <input v-if="leftPanelMode === 'price'" v-model="searchMasterKeyword" class="w-full border p-1 text-xs" placeholder="品名・仕様・企業名・基本など スペースでAND検索">
                     <input v-if="leftPanelMode === 'set'" v-model="searchSetKeyword" class="w-full border p-1 text-xs" placeholder="セット名で検索...">
-                    <input v-if="leftPanelMode === 'material'" v-model="searchMaterialKeyword" class="w-full border p-1 text-xs" placeholder="品名・仕様・単位 スペースでAND検索">
+                    <input v-if="leftPanelMode === 'material' || leftPanelMode === 'material_incl'" v-model="searchMaterialKeyword" class="w-full border p-1 text-xs" placeholder="品名・仕様・単位 スペースでAND検索">
                   </div>
 
                   <div class="edit-left-panel-scroll bg-gray-50 p-2">
@@ -1076,10 +1673,15 @@
                       </div>
                     </div>
 
-                    <div v-if="leftPanelMode === 'material'">
-                      <button v-if="materialEditIdx !== 'new'" @click="openMaterialAdd" class="w-full bg-teal-600 text-white text-xs py-1.5 rounded hover:bg-teal-700 flex items-center justify-center gap-1 mb-2">
-                        <span class="material-icons" style="font-size:14px">add</span>新規追加
-                      </button>
+                    <div v-if="leftPanelMode === 'material' || leftPanelMode === 'material_incl'">
+                      <div class="flex gap-1 mb-2">
+                        <button v-if="materialEditIdx !== 'new'" @click="openMaterialAdd" class="flex-1 bg-teal-600 text-white text-xs py-1.5 rounded hover:bg-teal-700 flex items-center justify-center gap-1">
+                          <span class="material-icons" style="font-size:14px">add</span>新規追加
+                        </button>
+                        <button @click="clearAllMaterialPrices" class="bg-red-100 text-red-700 text-xs px-2 py-1.5 rounded hover:bg-red-200 flex items-center gap-0.5" title="全データ削除">
+                          <span class="material-icons" style="font-size:14px">delete_sweep</span>全クリア
+                        </button>
+                      </div>
                       <!-- 新規追加カード -->
                       <div v-if="materialEditIdx === 'new'" class="bg-white mb-2 rounded shadow-sm overflow-hidden border-2 border-teal-400">
                         <div class="grid grid-cols-3 gap-0 border-b border-gray-200">
@@ -1134,8 +1736,48 @@
 
               <!-- 中央：見積明細エリア -->
               <div class="edit-main legacy-card p-4 rounded shadow-inner relative">
-                <!-- 見積入力ヘッダー -->
-                <div class="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2 mb-4 bg-white/50 p-2 rounded border border-black/10">
+                <!-- 見積入力ヘッダー（モバイル: 折りたたみ） -->
+                <div v-if="isMobile" class="mb-4 bg-white/50 rounded border border-black/10 overflow-hidden">
+                  <div @click="mobileHeaderOpen = !mobileHeaderOpen" class="flex items-center justify-between px-3 py-2 cursor-pointer active:bg-gray-100">
+                    <div class="text-sm font-bold text-gray-800 truncate flex-1">
+                      {{ form.header.client || '顧客未設定' }} - {{ form.header.project || '工事名未設定' }}
+                    </div>
+                    <button class="ml-2 text-xs text-blue-600 font-bold flex items-center gap-0.5 flex-shrink-0">
+                      {{ mobileHeaderOpen ? '閉じる' : '展開' }}
+                      <span class="material-icons text-sm">{{ mobileHeaderOpen ? 'expand_less' : 'expand_more' }}</span>
+                    </button>
+                  </div>
+                  <div v-show="mobileHeaderOpen" class="border-t border-black/10 p-2 grid grid-cols-1 gap-y-2">
+                    <div class="flex items-center"><label class="w-16 text-xs font-bold flex-shrink-0">日付:</label><input type="date" v-model="form.header.date" class="input-base text-xs"></div>
+                    <div class="flex items-center relative">
+                      <label class="w-16 text-xs font-bold flex-shrink-0">顧客名:</label>
+                      <input type="text" v-model="form.header.client"
+                             @focus="clientDropdown.show = true; clientDropdown.filter = form.header.client"
+                             @input="clientDropdown.filter = form.header.client; onClientInput($event)"
+                             @blur="setTimeout(() => clientDropdown.show = false, 200)"
+                             class="input-base text-xs" placeholder="クリックで候補表示" autocomplete="off">
+                      <div v-if="clientDropdown.show && filteredCompanies.length"
+                           class="absolute top-full left-16 right-0 z-50 bg-white border border-gray-300 rounded shadow-lg max-h-60 overflow-y-auto">
+                        <div v-for="c in filteredCompanies" :key="c.name"
+                             @mousedown.prevent="form.header.client = c.name; clientDropdown.show = false; onClientInput({target:{value:c.name}})"
+                             class="px-3 py-1.5 text-xs cursor-pointer hover:bg-blue-100 flex justify-between items-center">
+                          <span>{{ c.name }}</span>
+                          <span class="text-[10px] px-1 rounded"
+                                :class="c.type === '元請' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'">{{ c.type }}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div class="flex items-center"><label class="w-16 text-xs font-bold flex-shrink-0">状態:</label><select v-model="form.header.status" class="input-base text-xs"><option>下書き</option><option>見積提出</option><option>成約</option><option>失注</option><option>保留</option><option>管理者確認中</option></select></div>
+                    <div class="flex items-center"><label class="w-16 text-xs font-bold flex-shrink-0">工事名:</label><input type="text" v-model="form.header.project" class="input-base text-xs"></div>
+                    <div class="flex items-center"><label class="w-16 text-xs font-bold flex-shrink-0">工事場所:</label><input type="text" v-model="form.header.location" class="input-base text-xs"></div>
+                    <div class="flex items-center"><label class="w-16 text-xs font-bold flex-shrink-0">工期:</label><input type="text" v-model="form.header.period" class="input-base text-xs"></div>
+                    <div class="flex items-center"><label class="w-16 text-xs font-bold flex-shrink-0">支払条件:</label><input type="text" v-model="form.header.payment" class="input-base text-xs"></div>
+                    <div class="flex items-center"><label class="w-16 text-xs font-bold flex-shrink-0">有効期限:</label><input type="text" v-model="form.header.expiry" class="input-base text-xs"></div>
+                    <div class="flex items-center"><label class="w-16 text-xs font-bold flex-shrink-0">税区分:</label><select v-model="form.header.taxMode" class="input-base text-xs"><option>税別</option><option>税込</option></select></div>
+                  </div>
+                </div>
+                <!-- 見積入力ヘッダー（デスクトップ: 従来通り） -->
+                <div v-else class="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2 mb-4 bg-white/50 p-2 rounded border border-black/10">
                   <div class="flex items-center">
                       <label class="w-16 text-xs font-bold">日付:</label>
                       <input type="date" v-model="form.header.date" class="input-base text-xs">
@@ -1167,8 +1809,55 @@
                   <div class="flex items-center"><label class="w-16 text-xs font-bold">税区分:</label><select v-model="form.header.taxMode" class="input-base text-xs"><option>税別</option><option>税込</option></select></div>
                 </div>
 
-                <!-- 改善5: 統一ツールバー（モード廃止・チェックボックス常設） -->
-                <div class="flex justify-between items-center mb-2 px-2 flex-wrap gap-1">
+                <!-- ツールバー: モバイル版 -->
+                <template v-if="isMobile">
+                  <div class="flex items-center justify-between mb-2 px-2 py-1 bg-white/60 rounded border border-black/10">
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs text-gray-500">
+                        <span class="material-icons text-sm align-middle">check_box</span>
+                        選択: <b>{{ selectedItemsCount }}</b>件
+                      </span>
+                      <button @click="selectAllRows" class="px-2 py-1 bg-blue-100 rounded hover:bg-blue-200 font-bold text-xs">全選択</button>
+                      <button @click="clearAllSelection" class="px-2 py-1 bg-gray-100 rounded hover:bg-gray-200 font-bold text-xs">全解除</button>
+                    </div>
+                    <div class="relative">
+                      <button @click="mobileToolbarMore = !mobileToolbarMore" class="px-2 py-1 bg-gray-200 rounded text-xs font-bold flex items-center gap-0.5">
+                        その他 <span class="material-icons text-sm">{{ mobileToolbarMore ? 'expand_less' : 'expand_more' }}</span>
+                      </button>
+                      <div v-if="mobileToolbarMore" class="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-300 rounded shadow-lg py-1 min-w-[160px]">
+                        <button @click="selectByVendorPrompt(); mobileToolbarMore=false" class="w-full text-left px-3 py-2 text-xs hover:bg-orange-50 flex items-center gap-2">
+                          <span class="material-icons text-xs">store</span> 業者別選択
+                        </button>
+                        <button @click="selectByCategoryPrompt(); mobileToolbarMore=false" class="w-full text-left px-3 py-2 text-xs hover:bg-teal-50 flex items-center gap-2">
+                          <span class="material-icons text-xs">category</span> 工種別選択
+                        </button>
+                        <button @click="selectByProductPrompt(); mobileToolbarMore=false" class="w-full text-left px-3 py-2 text-xs hover:bg-purple-50 flex items-center gap-2">
+                          <span class="material-icons text-xs">inventory_2</span> 品名別選択
+                        </button>
+                        <button @click="selectUnorderedRows(); mobileToolbarMore=false" class="w-full text-left px-3 py-2 text-xs hover:bg-red-50 flex items-center gap-2">
+                          <span class="material-icons text-xs">warning</span> 未発注選択
+                        </button>
+                        <div class="border-t border-gray-200 my-1"></div>
+                        <div class="px-3 py-2">
+                          <div class="text-xs font-bold text-yellow-800 mb-1"><span class="material-icons text-xs align-middle">percent</span> 一括単価変更</div>
+                          <div class="flex items-center gap-1 mb-1">
+                            <select v-model="bulkPriceTarget" class="text-xs border rounded px-1 py-0.5 flex-1">
+                              <option value="price">見積単価</option><option value="cost">原価単価</option><option value="both">両方</option>
+                            </select>
+                            <num-input v-model="bulkPricePercent" class="w-14 text-xs border rounded px-1 py-0.5 text-right" placeholder="10" />
+                            <span class="text-xs font-bold">%</span>
+                          </div>
+                          <button @click="applyBulkPriceChange(); mobileToolbarMore=false" class="w-full px-2 py-1 bg-yellow-500 text-white rounded text-xs font-bold">
+                            適用<span v-if="selectedItemsCount > 0">（{{ selectedItemsCount }}件）</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                <!-- ツールバー: デスクトップ版（従来通り） -->
+                <template v-else>
+                <div class="toolbar-scroll flex justify-between items-center mb-2 px-2 flex-wrap gap-1">
                   <div class="flex items-center gap-2">
                     <span class="text-xs text-gray-500">
                       <span class="material-icons text-sm align-middle">check_box</span>
@@ -1194,7 +1883,7 @@
                 </div>
 
                 <!-- 一括単価変更ツールバー -->
-                <div class="flex items-center gap-2 mb-2 px-2 py-1 bg-yellow-50 border border-yellow-200 rounded flex-wrap">
+                <div class="toolbar-scroll flex items-center gap-2 mb-2 px-2 py-1 bg-yellow-50 border border-yellow-200 rounded flex-wrap">
                   <span class="text-xs font-bold text-yellow-800">
                     <span class="material-icons text-sm align-middle">percent</span> 一括単価変更
                   </span>
@@ -1212,9 +1901,137 @@
                   </button>
                   <span class="text-xs text-gray-500">※ 選択行がある場合は選択行のみ適用</span>
                 </div>
+                </template>
 
-                <!-- 見積入力明細 -->
-                <div class="edit-table-scroll" style="height: calc(100vh - 350px); min-height: 200px; border: 1px solid #999;">
+                <!-- 見積入力明細: モバイル版（カード形式） -->
+                <div v-if="isMobile" class="mobile-card-list" style="height: calc(100vh - 280px); min-height: 200px; overflow-y: auto; -webkit-overflow-scrolling: touch;" @input.capture="isDirty=true" @change.capture="isDirty=true" @click="closeCardMenu()">
+                  <div v-for="(item, idx) in form.items" :key="item._uid || idx"
+                       class="mobile-est-card mb-2 rounded-lg border bg-white shadow-sm overflow-hidden"
+                       :class="{ 'border-blue-400 bg-blue-50 border-l-4': item.selected, 'border-gray-200': !item.selected }">
+                    <!-- カード折りたたみヘッダー -->
+                    <div class="flex items-center gap-1.5 px-2 py-2" @click.stop>
+                      <input type="checkbox" v-model="item.selected" @click.stop="handleRowSelection(idx, $event)" class="w-5 h-5 flex-shrink-0">
+                      <span class="text-xs text-gray-400 font-mono w-5 text-center flex-shrink-0">{{ idx+1 }}</span>
+                      <div class="flex-1 min-w-0 cursor-pointer" @click="toggleCardExpand(idx)">
+                        <div class="text-sm font-bold text-gray-800 truncate">{{ item.product || '(品名未入力)' }}</div>
+                        <div v-if="item.spec" class="text-xs text-gray-400 truncate">{{ item.spec }}</div>
+                      </div>
+                      <button @click.stop="toggleCardExpand(idx)" class="p-1 text-gray-400 flex-shrink-0">
+                        <span class="material-icons text-lg transition-transform" :class="{ 'rotate-180': expandedCardIdx === idx }">expand_more</span>
+                      </button>
+                      <div class="relative flex-shrink-0">
+                        <button @click.stop="toggleCardMenu(idx)" class="p-1 text-gray-400">
+                          <span class="material-icons text-lg">more_vert</span>
+                        </button>
+                        <div v-if="cardMenuIdx === idx" class="absolute right-0 top-full mt-1 z-50 bg-white border border-gray-300 rounded shadow-lg py-1 min-w-[140px]" @click.stop>
+                          <button @click="cardAction('insertAbove', idx)" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2">
+                            <span class="material-icons text-xs">add</span> 上に行追加
+                          </button>
+                          <button @click="cardAction('insertBelow', idx)" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2">
+                            <span class="material-icons text-xs">add</span> 下に行追加
+                          </button>
+                          <div class="border-t border-gray-100 my-0.5"></div>
+                          <button @click="cardAction('moveUp', idx)" :disabled="idx === 0" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2 disabled:opacity-30">
+                            <span class="material-icons text-xs">arrow_upward</span> 上に移動
+                          </button>
+                          <button @click="cardAction('moveDown', idx)" :disabled="idx >= form.items.length - 1" class="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 flex items-center gap-2 disabled:opacity-30">
+                            <span class="material-icons text-xs">arrow_downward</span> 下に移動
+                          </button>
+                          <div class="border-t border-gray-100 my-0.5"></div>
+                          <button @click="cardAction('delete', idx)" class="w-full text-left px-3 py-2 text-xs hover:bg-red-50 text-red-600 flex items-center gap-2">
+                            <span class="material-icons text-xs">delete</span> 削除
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <!-- サマリー行（常時表示） -->
+                    <div class="flex items-center gap-3 px-2 pb-2 text-xs">
+                      <span class="text-blue-700 font-bold">売価 {{ item.amount ? formatCurrency(item.amount) : '-' }}</span>
+                      <span class="text-orange-700 font-bold">原価 {{ (item.orderedQty && item.cost) ? formatCurrency(Math.round(item.orderedQty * item.cost)) : (item.qty && item.cost ? formatCurrency(Math.round(item.qty * item.cost)) : '-') }}</span>
+                      <span v-if="Number(item.price) && Number(item.qty)" class="px-1.5 py-0.5 rounded-full text-[10px] font-bold"
+                            :class="Number(calculateMargin(item)) >= 15 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'">
+                        粗利 {{ calculateMargin(item) }}%
+                      </span>
+                      <span v-else class="text-gray-300 text-[10px]">粗利 -</span>
+                    </div>
+                    <!-- 展開カード（編集フォーム） -->
+                    <div v-if="expandedCardIdx === idx" class="border-t border-gray-200 px-3 py-3 bg-gray-50 space-y-3">
+                      <!-- 見積（売価） -->
+                      <div>
+                        <div class="text-xs font-bold text-blue-700 mb-1.5 border-b border-blue-200 pb-0.5">見積（売価）</div>
+                        <div class="space-y-1.5">
+                          <div class="flex items-center gap-2">
+                            <label class="text-xs text-gray-500 w-12 flex-shrink-0">品名</label>
+                            <input type="text" v-model="item.product" @focus="openLeftPanel('price', idx)" class="flex-1 text-sm border border-gray-300 rounded px-2 py-1.5 font-bold" placeholder="品名">
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <label class="text-xs text-gray-500 w-12 flex-shrink-0">仕様</label>
+                            <input type="text" v-model="item.spec" class="flex-1 text-sm border border-gray-300 rounded px-2 py-1.5" placeholder="仕様">
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <label class="text-xs text-gray-500 w-12 flex-shrink-0">数量</label>
+                            <num-input :model-value="item.qty" @update:model-value="v => { item.qty = v; calcLine(item) }" class="w-20 text-sm border border-gray-300 rounded px-2 py-1.5 text-right" />
+                            <label class="text-xs text-gray-500 w-8 flex-shrink-0">単位</label>
+                            <input type="text" v-model="item.unit" list="unit-list" class="w-16 text-sm border border-gray-300 rounded px-2 py-1.5 text-center" placeholder="-">
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <label class="text-xs text-gray-500 w-12 flex-shrink-0">単価</label>
+                            <num-input :model-value="item.price" @update:model-value="v => { item.price = v; calcLine(item) }" class="w-24 text-sm border border-gray-300 rounded px-2 py-1.5 text-right" />
+                            <span class="text-sm font-bold text-blue-800 ml-auto">金額: {{ item.amount ? formatCurrency(item.amount) : '-' }}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <!-- 実行（原価） -->
+                      <div>
+                        <div class="text-xs font-bold text-orange-700 mb-1.5 border-b border-orange-200 pb-0.5">実行（原価）</div>
+                        <div class="space-y-1.5">
+                          <div class="flex items-center gap-2">
+                            <label class="text-xs text-gray-500 w-12 flex-shrink-0">発注先</label>
+                            <input type="text" v-model="item.vendor" list="vendor-list" class="flex-1 text-sm border border-gray-300 rounded px-2 py-1.5" placeholder="業者選択...">
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <label class="text-xs text-gray-500 w-12 flex-shrink-0">原価</label>
+                            <num-input :model-value="item.cost" @update:model-value="v => { item.cost = v; calcLine(item) }" class="w-24 text-sm border border-gray-300 rounded px-2 py-1.5 text-right" />
+                            <span class="text-sm font-bold text-orange-800 ml-auto">金額: {{ (item.orderedQty && item.cost) ? formatCurrency(Math.round(item.orderedQty * item.cost)) : '-' }}</span>
+                          </div>
+                          <div class="flex items-center gap-2">
+                            <label class="text-xs text-gray-500 w-12 flex-shrink-0">数量</label>
+                            <num-input :model-value="item.orderedQty" @update:model-value="v => { item.orderedQty = v; calcLine(item) }" class="w-20 text-sm border border-gray-300 rounded px-2 py-1.5 text-right" />
+                            <label class="text-xs text-gray-500 w-8 flex-shrink-0">単位</label>
+                            <input type="text" v-model="item.exeUnit" list="unit-list" class="w-16 text-sm border border-gray-300 rounded px-2 py-1.5 text-center" placeholder="-">
+                          </div>
+                        </div>
+                      </div>
+                      <!-- 粗利 -->
+                      <div class="text-right text-sm font-bold pt-1 border-t border-gray-200">
+                        粗利率:
+                        <span v-if="Number(item.price) && Number(item.qty)"
+                              :class="Number(calculateMargin(item)) >= 15 ? 'text-green-700' : 'text-red-600'">
+                          {{ calculateMargin(item) }}%
+                        </span>
+                        <span v-else class="text-gray-400">-</span>
+                      </div>
+                    </div>
+                  </div>
+                  <!-- 選択集計（モバイル） -->
+                  <div v-if="showSelectedCalc && selectedItemsCount > 0" class="mb-2 p-2 bg-yellow-50 border border-yellow-300 rounded-lg text-xs">
+                    <div class="flex justify-between items-center">
+                      <span class="font-bold text-yellow-800"><span class="material-icons text-xs align-middle">calculate</span> 選択集計 ({{ selectedItemsCount }}件)</span>
+                      <button @click="showSelectedCalc = false" class="text-gray-400"><span class="material-icons text-sm">close</span></button>
+                    </div>
+                    <div class="flex gap-3 mt-1">
+                      <span class="text-blue-900 font-bold">売価: {{ formatCurrency(selectedTotalAmount) }}</span>
+                      <span class="text-orange-900 font-bold">原価: {{ formatCurrency(selectedTotalCost) }}</span>
+                      <span class="font-bold" :class="selectedTotalAmount - selectedTotalCost >= 0 ? 'text-green-700' : 'text-red-700'">
+                        {{ selectedTotalAmount ? (((selectedTotalAmount - selectedTotalCost) / selectedTotalAmount) * 100).toFixed(1) : '0.0' }}%
+                      </span>
+                    </div>
+                  </div>
+                  <button @click="addItem" class="w-full py-3 border-2 border-dashed border-gray-300 text-gray-500 text-sm rounded-lg hover:bg-white transition font-bold">+ 行追加</button>
+                </div>
+
+                <!-- 見積入力明細: デスクトップ版（テーブル形式） -->
+                <div v-else class="edit-table-scroll" style="height: calc(100vh - 350px); min-height: 200px; border: 1px solid #999;">
                   <table class="grid-legacy w-full min-w-[1000px]">
                     <thead style="position: sticky; top: 0; z-index: 10;">
                       <tr>
@@ -1230,14 +2047,22 @@
                       </tr>
                     </thead>
                     <tbody @input.capture="isDirty=true" @change.capture="isDirty=true">
-                      <tr v-for="(item, idx) in form.items" :key="item._uid || idx" :id="'item-row-' + idx"
+                      <template v-for="(item, idx) in form.items" :key="item._uid || idx">
+                      <tr :id="'item-row-' + idx"
+                          draggable="true"
+                          @dragstart="onRowDragStart($event, idx, 'estimate')"
+                          @dragover.prevent="onRowDragOver($event, idx)"
+                          @drop="onRowDrop($event, idx)"
+                          @dragend="onRowDragEnd($event)"
                           @contextmenu.prevent="onRowContextMenu($event, idx, 'estimate')"
                           @click="sidePanelMode === 'order' ? handleEstimateRowClick(item, idx) : null"
                           :class="{
                             'bg-blue-100': item.selected,
                             'hover:bg-gray-50': !item.selected,
                             'cursor-pointer hover:bg-orange-100 border-l-4 border-orange-500': sidePanelMode === 'order' && !item.selected,
-                            'bg-blue-50': activeLeftPanelRow === idx && !item.selected
+                            'bg-blue-50': activeLeftPanelRow === idx && !item.selected,
+                            'border-t-2 border-indigo-400': dragState.dragging && dragState.toIdx === idx && idx < dragState.fromIdx,
+                            'border-b-2 border-indigo-400': dragState.dragging && dragState.toIdx === idx && idx >= dragState.fromIdx
                           }">
                         <td class="text-center" style="cursor:pointer; user-select:none;">
                           <input type="checkbox" v-model="item.selected" @click.stop="handleRowSelection(idx, $event)" tabindex="-1">
@@ -1268,19 +2093,45 @@
                         <td class="bg-orange-50"><num-input :model-value="item.orderedQty" @update:model-value="v => { item.orderedQty = v; calcLine(item) }" class="input-cell num-cell" @click.stop :data-row="idx" data-col="7" @keydown="cellNav($event)" /></td>
                         <td class="bg-orange-50"><input type="text" v-model="item.exeUnit" list="unit-list" class="input-cell text-center" placeholder="-" @click.stop :data-row="idx" data-col="8" @keydown="cellNav($event)"></td>
                         <td class="num-cell font-mono bg-orange-100 text-orange-900 font-bold">{{ (item.orderedQty && item.cost) ? formatCurrency(Math.round(item.orderedQty * item.cost)) : '' }}</td>
-                        
+
                         <td class="text-right num-cell font-bold" :class="(item.amount && item.qty && item.cost) ? ((item.amount - item.qty * item.cost) / item.amount * 100 < 15 ? 'text-red-500' : 'text-green-700') : ''">
                           <span v-if="Number(item.price) && Number(item.qty)">{{ calculateMargin(item) }}%</span>
                           <span v-else class="text-gray-400">-</span>
                         </td>
                         <td class="text-center"><button @click.stop="removeItem(idx)" class="text-gray-400 hover:text-red-500 text-sm font-bold">×</button></td>
                       </tr>
+                      <tr v-if="showSelectedCalc && selectedItemsCount > 0 && idx === lastSelectedIdx" class="bg-yellow-50 border-t-2 border-yellow-400 border-b-2">
+                        <td colspan="7" class="text-right py-1.5 px-2 font-bold text-yellow-800 text-sm">
+                          <span class="material-icons text-sm align-middle">calculate</span> 選択集計 ({{ selectedItemsCount }}件)
+                        </td>
+                        <td class="num-cell font-mono font-bold text-blue-900 bg-yellow-100 py-1.5">{{ formatCurrency(selectedTotalAmount) }}</td>
+                        <td colspan="4" class="text-right py-1.5 px-2 font-bold text-orange-800 text-sm">選択原価:</td>
+                        <td class="num-cell font-mono font-bold text-orange-900 bg-yellow-100 py-1.5">{{ formatCurrency(selectedTotalCost) }}</td>
+                        <td class="text-center font-bold py-1.5 text-sm" :class="selectedTotalAmount - selectedTotalCost >= 0 ? 'text-green-700' : 'text-red-700'">
+                          {{ selectedTotalAmount ? (((selectedTotalAmount - selectedTotalCost) / selectedTotalAmount) * 100).toFixed(1) : '0.0' }}%
+                        </td>
+                        <td class="text-center"><button @click="showSelectedCalc = false" class="text-gray-400 hover:text-gray-600" title="閉じる"><span class="material-icons text-sm">close</span></button></td>
+                      </tr>
+                      </template>
                     </tbody>
                   </table>
                   <button @click="addItem" class="mt-2 w-full py-2 border border-dashed border-gray-400 text-gray-500 text-xs hover:bg-white transition font-bold">+ 行追加</button>
                 </div>
                 
-                <div class="mt-2 flex justify-end gap-6 text-sm font-bold p-3 bg-white border border-gray-400 shadow-sm flex-wrap">
+                <!-- 合計サマリー: モバイル版 -->
+                <div v-if="isMobile" class="mt-2 bg-white border border-gray-400 shadow-sm rounded p-2">
+                  <div class="grid grid-cols-2 gap-1 text-xs font-bold">
+                    <div class="text-orange-800 p-1.5 bg-orange-50 rounded">原価合計<br><span class="text-base">{{ formatCurrency(totalEstimatedCost) }}</span></div>
+                    <div class="text-blue-900 p-1.5 bg-blue-50 rounded">売上合計<br><span class="text-base">{{ formatCurrency(totalAmount) }}</span></div>
+                    <div class="p-1.5 rounded" :class="totalAmount-totalEstimatedCost >= 0 ? 'text-green-700 bg-green-50' : 'text-red-700 bg-red-50'">
+                      粗利<br><span class="text-base">{{ formatCurrency(totalAmount-totalEstimatedCost) }}</span>
+                      <span class="text-[10px] bg-gray-200 px-1 rounded ml-1">{{ totalAmount ? (((totalAmount - totalEstimatedCost) / totalAmount) * 100).toFixed(1) : 0 }}%</span>
+                    </div>
+                    <div class="text-orange-700 p-1.5 bg-orange-50 rounded">原価率<br><span class="text-base">{{ totalAmount ? ((totalEstimatedCost / totalAmount) * 100).toFixed(1) : 0 }}%</span></div>
+                  </div>
+                </div>
+                <!-- 合計サマリー: デスクトップ版 -->
+                <div v-else class="mt-2 flex justify-end gap-6 text-sm font-bold p-3 bg-white border border-gray-400 shadow-sm flex-wrap">
                    <div class="text-orange-800">発注合計(原価): <span class="text-xl">{{ formatCurrency(totalEstimatedCost) }}</span></div>
                    <div class="text-blue-900 border-l pl-4 border-gray-400">見積合計(売上): <span class="text-xl">{{ formatCurrency(totalAmount) }}</span></div>
                    <div class="border-l pl-4 border-gray-400" :class="totalAmount-totalEstimatedCost >= 0 ? 'text-green-700' : 'text-red-700'">
@@ -1392,9 +2243,26 @@
                                 </div>
                             </div>
                             
-                            <!-- パネル下部: 発注先一括変更・保存ボタン -->
+                            <!-- パネル下部: 一括単価変更・発注先一括変更・保存ボタン -->
                             <div v-if="orderInPanel.items.length > 0" class="flex-shrink-0 border-t-2 border-gray-300 bg-gray-50 p-3 space-y-3">
                                 <template v-if="orderInPanel.items.length > 0">
+                                    <div class="bg-orange-50 border border-orange-300 p-2 rounded">
+                                        <div class="text-xs font-bold mb-1.5 text-gray-700 flex items-center gap-1">
+                                            <span class="material-icons text-sm">percent</span> 発注単価を一括変更
+                                        </div>
+                                        <div class="flex gap-2 items-center">
+                                            <div class="flex items-center gap-0.5 flex-1">
+                                                <num-input v-model="orderPanelBulkPercent" class="w-20 border border-gray-300 p-2 text-xs rounded text-right" placeholder="10" />
+                                                <span class="text-xs font-bold">%</span>
+                                            </div>
+                                            <button @click="applyOrderPanelBulkPriceChange" class="bg-orange-500 text-white px-4 py-2 rounded font-bold text-xs hover:bg-orange-600 flex items-center gap-1 whitespace-nowrap">
+                                                <span class="material-icons text-sm">sync_alt</span> 一括適用
+                                            </button>
+                                        </div>
+                                        <div class="text-[10px] text-gray-500 mt-1">
+                                            ※ 全明細の発注単価にパーセント適用（+値で値上げ、-値で値下げ）
+                                        </div>
+                                    </div>
                                     <div class="bg-yellow-50 border border-yellow-300 p-2 rounded">
                                         <div class="text-xs font-bold mb-1.5 text-gray-700 flex items-center gap-1">
                                             <span class="material-icons text-sm">business</span> 発注先を一括変更
@@ -1434,7 +2302,7 @@
                 <h2 class="font-bold">請求書受取処理 (Googleドライブ連携)</h2>
             </div>
             
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4" style="height:calc(100vh - 350px);min-height:300px;">
+            <div class="invoice-grid grid grid-cols-1 md:grid-cols-3 gap-4" style="height:calc(100vh - 350px);min-height:300px;">
                 <div class="bg-white border border-gray-400 p-2 flex flex-col min-h-0 overflow-hidden">
                     <div class="mb-2 flex-shrink-0">
                         <label class="block w-full bg-green-600 text-white text-center text-sm font-bold py-2 rounded cursor-pointer hover:bg-green-700 transition mb-2">
@@ -1604,7 +2472,7 @@
 
         <!-- 管理者画面 (Phase 1 改修) -->
         <div v-if="currentTab === 'admin'" class="max-w-6xl mx-auto space-y-6">
-          <div class="flex border-b border-gray-400 mb-4">
+          <div class="admin-tabs flex border-b border-gray-400 mb-4">
               <button @click="adminSubTab='approval'; loadAdminSubTab('approval')" class="px-4 py-2 font-bold" :class="adminSubTab==='approval' ? 'bg-yellow-100 border-b-2 border-yellow-600' : 'text-gray-500'">承認・管理</button>
               <button @click="loadAnalysis" class="px-4 py-2 font-bold" :class="adminSubTab==='analysis' ? 'bg-indigo-100 border-b-2 border-indigo-600' : 'text-gray-500'">経営分析</button>
               <button @click="adminSubTab='accounting'" class="px-4 py-2 font-bold" :class="adminSubTab==='accounting' ? 'bg-green-100 border-b-2 border-green-600' : 'text-gray-500'">会計連携</button>
@@ -2000,6 +2868,98 @@
           </div>
 
         </div>
+
+        <!-- マスタデータ編集画面 -->
+        <div v-if="currentTab === 'master'" class="max-w-7xl mx-auto space-y-5">
+          <div class="flex items-center justify-between">
+            <h2 class="font-bold text-xl flex items-center gap-2">
+              <span class="material-icons text-emerald-600" style="font-size:28px">table_chart</span> マスタデータ編集
+            </h2>
+          </div>
+
+          <!-- サブタブ -->
+          <div class="flex flex-wrap gap-1.5 border-b-2 border-gray-300 pb-2">
+            <button v-for="(label, key) in MASTER_LABELS" :key="key"
+                    @click="loadMasterData(key)"
+                    class="px-4 py-2 text-sm font-bold rounded-t transition"
+                    :class="masterTab === key ? 'bg-emerald-100 text-emerald-800 border-2 border-emerald-400 border-b-0' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'">
+              {{ label }}
+            </button>
+          </div>
+
+          <!-- ツールバー -->
+          <div class="flex items-center gap-3 flex-wrap">
+            <input v-model="masterSearch" class="border border-gray-300 rounded px-4 py-2 text-sm flex-1 min-w-[200px]" placeholder="検索（スペースでAND検索）...">
+            <button @click="openMasterAddRow" class="bg-emerald-600 text-white px-4 py-2 text-sm font-bold rounded hover:bg-emerald-700 flex items-center gap-1" :disabled="masterAddRow">
+              <span class="material-icons">add</span> 新規追加
+            </button>
+            <button @click="loadMasterData()" class="bg-gray-200 text-gray-700 px-4 py-2 text-sm font-bold rounded hover:bg-gray-300 flex items-center gap-1">
+              <span class="material-icons">refresh</span> 更新
+            </button>
+            <span class="text-sm text-gray-500">{{ filteredMasterRows.length }} / {{ masterData.data.length }} 件</span>
+          </div>
+
+          <!-- ローディング -->
+          <div v-if="masterData.loading" class="text-center py-8">
+            <div class="loader mx-auto mb-2"></div>
+            <div class="text-base text-gray-500">読込中...</div>
+          </div>
+
+          <!-- データテーブル -->
+          <div v-else class="border border-gray-300 rounded-lg overflow-hidden shadow-sm">
+            <div class="overflow-x-auto" style="max-height: calc(100vh - 340px);">
+              <table class="w-full text-sm">
+                <thead class="bg-gray-100 sticky top-0 z-10">
+                  <tr>
+                    <th class="px-3 py-2.5 text-left border-b-2 border-gray-300 text-xs font-bold text-gray-600 whitespace-nowrap">#</th>
+                    <th v-for="(h, hi) in masterData.headers" :key="hi"
+                        class="px-3 py-2.5 text-left border-b-2 border-gray-300 text-xs font-bold text-gray-600 whitespace-nowrap">{{ h }}</th>
+                    <th class="px-3 py-2.5 text-center border-b-2 border-gray-300 text-xs font-bold text-gray-600 whitespace-nowrap">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- 新規追加行 -->
+                  <tr v-if="masterAddRow" class="bg-emerald-50 border-b border-emerald-200">
+                    <td class="px-3 py-2 text-gray-400 text-center">新規</td>
+                    <td v-for="(h, hi) in masterData.headers" :key="'add-'+hi" class="px-2 py-1.5">
+                      <input v-model="masterAddValues[hi]" class="w-full border border-emerald-300 rounded px-2 py-1.5 text-sm" :placeholder="h">
+                    </td>
+                    <td class="px-2 py-1.5 text-center whitespace-nowrap">
+                      <button @click="addMasterRow" class="bg-emerald-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-emerald-700">保存</button>
+                      <button @click="cancelMasterAdd" class="bg-gray-200 text-gray-600 px-3 py-1 rounded text-xs font-bold hover:bg-gray-300 ml-1">取消</button>
+                    </td>
+                  </tr>
+                  <!-- データ行 -->
+                  <tr v-for="(row, ri) in filteredMasterRows" :key="ri"
+                      class="border-b border-gray-200 hover:bg-gray-50"
+                      :class="masterEditRow === ri ? 'bg-blue-50' : ''">
+                    <td class="px-3 py-2 text-gray-400 text-center">{{ ri + 1 }}</td>
+                    <template v-if="masterEditRow === ri">
+                      <td v-for="(cell, ci) in row" :key="'edit-'+ci" class="px-2 py-1.5">
+                        <input v-model="masterEditValues[ci]" class="w-full border border-blue-300 rounded px-2 py-1.5 text-sm">
+                      </td>
+                      <td class="px-2 py-1.5 text-center whitespace-nowrap">
+                        <button @click="saveMasterRow" class="bg-blue-600 text-white px-3 py-1 rounded text-xs font-bold hover:bg-blue-700">保存</button>
+                        <button @click="cancelMasterEdit" class="bg-gray-200 text-gray-600 px-3 py-1 rounded text-xs font-bold hover:bg-gray-300 ml-1">取消</button>
+                      </td>
+                    </template>
+                    <template v-else>
+                      <td v-for="(cell, ci) in row" :key="'cell-'+ci" class="px-3 py-2 max-w-[250px] truncate" :title="cell">{{ cell }}</td>
+                      <td class="px-2 py-1.5 text-center whitespace-nowrap">
+                        <button @click="startMasterEdit(ri)" class="bg-blue-100 text-blue-700 px-3 py-1 rounded text-xs font-bold hover:bg-blue-200">編集</button>
+                        <button @click="deleteMasterRow(ri)" class="bg-red-100 text-red-700 px-3 py-1 rounded text-xs font-bold hover:bg-red-200 ml-1">削除</button>
+                      </td>
+                    </template>
+                  </tr>
+                  <tr v-if="filteredMasterRows.length === 0 && !masterData.loading">
+                    <td :colspan="masterData.headers.length + 2" class="p-8 text-center text-gray-400 text-base">データがありません</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
       </div>
     </main>
 
@@ -2008,7 +2968,7 @@
          :style="{ left: chatPosX + 'px', top: chatPosY + 'px' }">
       
       <transition name="modal">
-        <div v-if="showChatBot" class="bg-white border border-gray-400 shadow-2xl rounded-lg mb-4 flex flex-col" style="width: min(500px, calc(100vw - 40px)); height: 650px; max-height: calc(100vh - 120px); overflow: hidden;">
+        <div v-if="showChatBot" class="bg-white border border-gray-400 shadow-2xl rounded-lg mb-4 flex flex-col" :class="isMobile ? 'mobile-chat-fullscreen' : ''" :style="isMobile ? {} : { width: 'min(500px, calc(100vw - 40px))', height: '650px', maxHeight: 'calc(100vh - 120px)', overflow: 'hidden' }">
           <div class="bg-purple-700 text-white p-3 font-bold flex justify-between items-center shadow-sm chatbot-drag-handle"
                @mousedown.prevent="onChatDragStart($event)" @touchstart="onChatDragStart($event)">
             <span class="flex items-center gap-1"><span class="material-icons text-sm">psychology</span>AIアシスタント</span>
@@ -2039,11 +2999,23 @@
                 <div class="bg-white border border-gray-300 px-3 py-2 rounded-lg text-gray-500 text-[10px] animate-pulse">考え中...</div>
               </div>
             </div>
+            <!-- 音声認識中インジケーター -->
+            <div v-if="isListening" class="bg-red-500 text-white text-xs px-3 py-1.5 flex items-center gap-2">
+              <span class="material-icons text-sm animate-pulse">mic</span>
+              <span class="flex-1 truncate">{{ voiceTranscript || '音声を聞いています...' }}</span>
+              <button @click="stopVoiceInput" class="text-white hover:text-red-200 font-bold">停止</button>
+            </div>
             <div class="p-2 border-t bg-gray-100">
               <div class="flex gap-2">
+                <button v-if="isVoiceSupported" @click="startVoiceInput('help')"
+                        class="px-2 py-1 rounded shadow transition-colors flex items-center justify-center"
+                        :class="isListening ? 'voice-listening text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'"
+                        :title="isListening ? '音声入力停止' : '音声入力開始'">
+                  <span class="material-icons text-sm">mic</span>
+                </button>
                 <input v-model="chatInput" @keydown.enter="!$event.isComposing && !isChatThinking && sendChatMessage()" :disabled="isChatThinking"
                        class="flex-1 border border-gray-300 p-2 rounded text-xs focus:outline-none focus:border-purple-500"
-                       placeholder="例: 見積書PDFの出し方は？">
+                       :placeholder="isListening ? '音声を聞いています...' : '例: 見積書PDFの出し方は？'">
                 <button v-if="isChatThinking" @click="abortAiThinking"
                         class="bg-red-500 text-white px-3 py-1 rounded shadow hover:bg-red-600 transition-colors" title="中断">
                   <span class="material-icons text-sm">stop</span>
@@ -2113,11 +3085,23 @@
                 <div class="bg-white border border-gray-300 px-3 py-2 rounded-lg text-gray-500 text-[10px] animate-pulse">{{ aiAssistantLoadingText || 'AI分析中...' }}</div>
               </div>
             </div>
+            <!-- 音声認識中インジケーター (操作モード) -->
+            <div v-if="isListening" class="bg-red-500 text-white text-xs px-3 py-1.5 flex items-center gap-2">
+              <span class="material-icons text-sm animate-pulse">mic</span>
+              <span class="flex-1 truncate">{{ voiceTranscript || '音声を聞いています...' }}</span>
+              <button @click="stopVoiceInput" class="text-white hover:text-red-200 font-bold">停止</button>
+            </div>
             <div class="p-2 border-t bg-gray-100">
               <div class="flex gap-2">
+                <button v-if="isVoiceSupported" @click="startVoiceInput('action')"
+                        class="px-2 py-1 rounded shadow transition-colors flex items-center justify-center"
+                        :class="isListening ? 'voice-listening text-white' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'"
+                        :title="isListening ? '音声入力停止' : '音声入力開始'">
+                  <span class="material-icons text-sm">mic</span>
+                </button>
                 <input v-model="aiAssistantInput" @keydown.enter="!$event.isComposing && !isAiAssistantThinking && sendAiAssistantMessage()" :disabled="isAiAssistantThinking"
                        class="flex-1 border border-gray-300 p-2 rounded text-xs focus:outline-none focus:border-orange-500"
-                       :placeholder="aiAssistantPlaceholder">
+                       :placeholder="isListening ? '音声を聞いています...' : aiAssistantPlaceholder">
                 <button v-if="isAiAssistantThinking" @click="abortAiThinking"
                         class="bg-red-500 text-white px-3 py-1 rounded shadow hover:bg-red-600 transition-colors" title="中断">
                   <span class="material-icons text-sm">stop</span>
@@ -2164,6 +3148,41 @@
       </div>
     </teleport>
 
+    <!-- モバイルボトムナビゲーション -->
+    <div v-if="isMobile && !loading" class="mobile-bottom-nav">
+      <button @click="checkUnsavedChanges(() => goHome())" :class="{ active: currentTab === 'menu' }">
+        <span class="material-icons">home</span>
+        <span>ホーム</span>
+      </button>
+      <button @click="checkUnsavedChanges(() => createNewEstimate(true))" :class="{ active: currentTab === 'edit' }">
+        <span class="material-icons">description</span>
+        <span>見積</span>
+      </button>
+      <button @click="checkUnsavedChanges(() => handleNavigation('dedicated_order', true))" :class="{ active: currentTab === 'dedicated_order' }">
+        <span class="material-icons">shopping_cart</span>
+        <span>発注</span>
+      </button>
+      <button @click="checkUnsavedChanges(() => goToInvoice())" :class="{ active: currentTab === 'invoice' }">
+        <span class="material-icons">receipt_long</span>
+        <span>請求書</span>
+      </button>
+      <button v-if="auth.isAdmin" @click="checkUnsavedChanges(() => goToProjectList())" :class="{ active: currentTab === 'list' }">
+        <span class="material-icons">analytics</span>
+        <span>一覧</span>
+      </button>
+      <button v-if="auth.isAdmin" @click="checkUnsavedChanges(() => goToAdmin())" :class="{ active: currentTab === 'admin' }">
+        <span class="material-icons">settings</span>
+        <span>管理</span>
+      </button>
+      <button @click="checkUnsavedChanges(() => handleNavigation('progress'))" :class="{ active: currentTab === 'progress' || currentTab === 'progress_edit' }">
+        <span class="material-icons">trending_up</span>
+        <span>出来高</span>
+      </button>
+    </div>
+
+    <!-- モバイルボトムシート背景 -->
+    <div v-if="isMobile && mobileSheetOpen" class="mobile-sheet-backdrop" @click="closeMobileSheet"></div>
+
     <!-- フローティング見積プレビューパネル -->
     <div v-if="floatingPanel.show"
          class="floating-panel-container"
@@ -2179,7 +3198,14 @@
           <div class="flex items-center gap-3 min-w-0 flex-1">
             <span class="material-icons text-base">{{ floatingPanel.sourceType === 'estimate' ? 'description' : 'shopping_cart' }}</span>
             <template v-if="floatingPanel.mode === 'list'">
-              <span class="text-base font-bold">{{ floatingPanel.sourceType === 'estimate' ? '見積履歴' : '発注履歴' }}</span>
+              <div class="flex items-center gap-1">
+                <button @click="openFloatingPanelList('estimate', floatingPanel.targetContext)"
+                        :class="floatingPanel.sourceType === 'estimate' ? 'bg-white text-indigo-700' : 'bg-indigo-600 text-indigo-200 hover:bg-indigo-500'"
+                        class="px-3 py-1 rounded text-sm font-bold transition">見積履歴</button>
+                <button @click="openFloatingPanelList('order', floatingPanel.targetContext)"
+                        :class="floatingPanel.sourceType === 'order' ? 'bg-white text-indigo-700' : 'bg-indigo-600 text-indigo-200 hover:bg-indigo-500'"
+                        class="px-3 py-1 rounded text-sm font-bold transition">発注履歴</button>
+              </div>
             </template>
             <template v-else>
               <span class="text-base font-bold truncate">
@@ -2202,6 +3228,12 @@
         <template v-else-if="floatingPanel.mode === 'list'">
           <div class="px-4 py-2.5 bg-gray-50 border-b flex-shrink-0">
             <input v-model="floatingPanel.listFilter" class="w-full border border-gray-300 rounded px-3 py-1.5 text-sm" placeholder="顧客名・工事名・発注先で絞り込み...">
+          </div>
+          <div class="px-4 py-2 bg-green-50 border-b flex-shrink-0">
+            <button @click="closeFloatingPanel()"
+                    class="w-full bg-green-600 text-white px-4 py-2.5 rounded font-bold text-sm hover:bg-green-700 transition flex items-center justify-center gap-2 shadow">
+              <span class="material-icons text-base">add_circle</span> 新規作成（空のフォームで開始）
+            </button>
           </div>
           <div class="flex-1 overflow-auto min-h-0">
             <!-- 見積リスト -->
@@ -2394,6 +3426,7 @@
       <!-- 下書きボタン削除 -->
       <div class="f-btn" @click="openLeftPanel('set')"><span class="material-icons f-icon">playlist_add</span>元請見積履歴</div>
       <div class="f-btn" @click="openLeftPanel('material')"><span class="material-icons f-icon text-teal-600">inventory</span>材料費単価</div>
+      <div class="f-btn" @click="openLeftPanel('material_incl')"><span class="material-icons f-icon text-amber-600">engineering</span>材料（施工込）単価</div>
       <div class="f-btn" @click="openOcrModal"><span class="material-icons f-icon">document_scanner</span>見積読込</div>
       <div class="f-btn" @click="copyDocument"><span class="material-icons f-icon text-purple-600">content_copy</span>コピー</div>
       <div class="f-btn" @click="pasteDocument" v-if="clipboardData"><span class="material-icons f-icon text-purple-600">content_paste</span>貼り付け</div>
@@ -2404,6 +3437,7 @@
       <div class="f-btn" @click="createDedicatedOrderPdf"><span class="material-icons f-icon text-blue-600">print</span>PDF発行</div>
       <div class="f-btn" @click="openLeftPanel('set', null, 'dedicated_order')"><span class="material-icons f-icon">playlist_add</span>元請見積履歴</div>
       <div class="f-btn" @click="openLeftPanel('material', null, 'dedicated_order')"><span class="material-icons f-icon text-teal-600">inventory</span>材料費単価</div>
+      <div class="f-btn" @click="openLeftPanel('material_incl', null, 'dedicated_order')"><span class="material-icons f-icon text-amber-600">engineering</span>材料（施工込）単価</div>
       <div class="f-btn" @click="openOcrModal"><span class="material-icons f-icon">document_scanner</span>見積読込</div>
       <div class="f-btn" @click="copyDocument"><span class="material-icons f-icon text-purple-600">content_copy</span>コピー</div>
       <div class="f-btn" @click="pasteDocument" v-if="clipboardData"><span class="material-icons f-icon text-purple-600">content_paste</span>貼り付け</div>
@@ -2481,6 +3515,17 @@
               </div>
             </div>
 
+            <!-- マスタ保存先選択 -->
+            <div v-if="showOcrPreview && ocrResults.length > 0" class="mt-3 p-2 bg-amber-50 border border-amber-200 rounded">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-amber-800"><span class="material-icons text-sm align-middle">save</span> マスタ保存先:</span>
+                <select v-model="ocrPricingMode" class="text-xs border rounded px-2 py-1">
+                  <option value="price_only">材料費単価マスタ</option>
+                  <option value="price_and_cost">材料（施工込）単価マスタ</option>
+                </select>
+              </div>
+            </div>
+
             <!-- アクションボタン -->
             <div class="mt-4 flex gap-2">
               <template v-if="!showOcrPreview">
@@ -2521,15 +3566,93 @@
 
     <!-- 右クリック行追加メニュー -->
     <div v-if="contextMenu.show" style="position:fixed; z-index:9999; top:0; left:0; width:100%; height:100%;" @click="contextMenu.show=false" @contextmenu.prevent="contextMenu.show=false">
-      <div :style="{position:'fixed', left: contextMenu.x + 'px', top: contextMenu.y + 'px'}" class="bg-white border border-gray-300 rounded shadow-lg py-1 min-w-[160px]" @click.stop>
+      <div ref="contextMenuEl" :style="{position:'fixed', left: contextMenu.x + 'px', top: contextMenu.y + 'px', maxHeight: 'calc(100vh - 10px)', overflowY: 'auto'}" class="bg-white border border-gray-300 rounded shadow-lg py-1 min-w-[200px]" @click.stop>
         <button @click="insertRow('above')" class="w-full text-left px-4 py-2 text-sm hover:bg-blue-50 flex items-center gap-2">
           <span class="material-icons text-sm text-gray-500">arrow_upward</span> 上に行を追加
         </button>
         <button @click="insertRow('below')" class="w-full text-left px-4 py-2 text-sm hover:bg-blue-50 flex items-center gap-2">
           <span class="material-icons text-sm text-gray-500">arrow_downward</span> 下に行を追加
         </button>
+        <div class="border-t border-gray-200 my-1"></div>
+        <button @click="moveRowUp()" class="w-full text-left px-4 py-2 text-sm hover:bg-blue-50 flex items-center gap-2">
+          <span class="material-icons text-sm text-indigo-500">north</span> この行を上に移動
+        </button>
+        <button @click="moveRowDown()" class="w-full text-left px-4 py-2 text-sm hover:bg-blue-50 flex items-center gap-2">
+          <span class="material-icons text-sm text-indigo-500">south</span> この行を下に移動
+        </button>
+        <template v-if="selectedItemsCount > 0">
+          <div class="border-t border-gray-200 my-1"></div>
+          <button @click="moveSelectedRowsUp()" class="w-full text-left px-4 py-2 text-sm hover:bg-green-50 flex items-center gap-2">
+            <span class="material-icons text-sm text-green-600">keyboard_double_arrow_up</span> 選択行を上に移動 ({{ selectedItemsCount }}件)
+          </button>
+          <button @click="moveSelectedRowsDown()" class="w-full text-left px-4 py-2 text-sm hover:bg-green-50 flex items-center gap-2">
+            <span class="material-icons text-sm text-green-600">keyboard_double_arrow_down</span> 選択行を下に移動 ({{ selectedItemsCount }}件)
+          </button>
+        </template>
+        <template v-if="contextMenu.target === 'estimate' && selectedItemsCount > 0">
+          <div class="border-t border-gray-200 my-1"></div>
+          <button @click="showSelectedCalc = !showSelectedCalc; contextMenu.show = false"
+                  class="w-full text-left px-4 py-2 text-sm hover:bg-yellow-50 flex items-center gap-2">
+            <span class="material-icons text-sm text-yellow-700">calculate</span>
+            {{ showSelectedCalc ? '選択集計を非表示' : '選択項目の集計' }}
+          </button>
+          <button @click="showVendorChangeModal=true; contextMenu.show=false"
+                  class="w-full text-left px-4 py-2 text-sm hover:bg-orange-50 flex items-center gap-2">
+            <span class="material-icons text-sm text-orange-600">local_shipping</span>
+            発注先一括変更 ({{ selectedItemsCount }}件)
+          </button>
+          <button @click="copyEstimateToOrder(); contextMenu.show=false"
+                  class="w-full text-left px-4 py-2 text-sm hover:bg-teal-50 flex items-center gap-2">
+            <span class="material-icons text-sm text-teal-600">content_copy</span>
+            見積→発注に一括コピー ({{ selectedItemsCount }}件)
+          </button>
+        </template>
+        <template v-if="contextMenu.target === 'dedicated' && dedicatedSelectedCount > 0">
+          <div class="border-t border-gray-200 my-1"></div>
+          <button @click="copyDedicatedEstToExe(); contextMenu.show=false"
+                  class="w-full text-left px-4 py-2 text-sm hover:bg-teal-50 flex items-center gap-2">
+            <span class="material-icons text-sm text-teal-600">content_copy</span>
+            見積→発注に一括コピー ({{ dedicatedSelectedCount }}件)
+          </button>
+        </template>
       </div>
     </div>
+
+    <!-- 発注先一括変更モーダル（右クリックメニューから起動） -->
+    <transition name="modal">
+      <div v-if="showVendorChangeModal" class="modal-overlay" @click.self="showVendorChangeModal=false">
+        <div class="modal-content w-full max-w-md">
+          <div class="modal-header">
+            <span>発注先一括変更</span>
+            <button @click="showVendorChangeModal=false">×</button>
+          </div>
+          <div class="modal-body p-4">
+            <div class="mb-3">
+              <label class="block text-xs font-bold text-gray-700 mb-1">変更先の発注先</label>
+              <select v-model="vendorChangeTarget" class="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500">
+                <option value="">選択してください</option>
+                <option v-for="v in (masters.vendors || [])" :key="v.displayName || v.name" :value="v.displayName || v.name">{{ v.displayName || v.name }}</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <div class="text-xs font-bold text-gray-700 mb-1">対象項目 ({{ selectedItemsCount }}件)</div>
+              <div class="max-h-48 overflow-y-auto border border-gray-200 rounded bg-gray-50">
+                <div v-for="(item, idx) in form.items.filter(i => i.selected)" :key="idx" class="p-2 border-b border-gray-100 text-xs">
+                  <div class="font-bold truncate">{{ item.product || '(品名なし)' }} <span class="text-gray-500 font-normal">{{ item.spec }}</span></div>
+                  <div class="text-[10px] text-gray-500">現在の発注先: <span :class="item.vendor ? 'text-blue-600' : 'text-red-400'">{{ item.vendor || '未設定' }}</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button @click="showVendorChangeModal=false" class="flex-1 bg-gray-200 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-300">キャンセル</button>
+              <button @click="applyVendorChangeFromMenu" :disabled="!vendorChangeTarget" class="flex-1 bg-orange-600 text-white px-4 py-2 rounded font-bold text-sm hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1">
+                <span class="material-icons text-sm">sync_alt</span> 変更
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </transition>
 
     <!-- 一括選択モーダル（業者別・工種別） -->
     <transition name="modal">
@@ -2599,6 +3722,32 @@ window.__script2Ran = true;
             else if(funcName === 'apiOcrEstimateFromBase64') resolve(JSON.stringify({ items: [{ category: "仮設", product: "テスト品目", spec: "テスト仕様", qty: 1, unit: "式", price: 10000 }] }));
             else if(funcName === 'apiTestLineSend') resolve(JSON.stringify({ success: false, message: 'モック環境ではテスト送信できません' }));
             else if(funcName === 'apiAiAssistantAction') resolve(JSON.stringify({ actions: [{ type: "update_item", filter: { operator: "all" }, changes: { vendor: "テスト建材" } }], summary: "全件の発注先を「テスト建材」に変更します", confidence: 0.9 }));
+            else if(funcName === 'apiProgressSetupSheet') resolve(JSON.stringify({ success: true, message: 'モック: シート設定完了' }));
+            else if(funcName === 'apiProgressGetReportList') resolve(JSON.stringify([
+              {orderId:'ORD-001',itemCount:2,estimateTotal:615000,progressTotal:440000,overallRate:0.715,periodPaymentTotal:75000,headerInfo:{projectName:'A邸新築工事',projectNo:'P-001'}},
+              {orderId:'ORD-002',itemCount:3,estimateTotal:1200000,progressTotal:600000,overallRate:0.5,periodPaymentTotal:200000,headerInfo:{projectName:'B邸リフォーム'}}
+            ]));
+            else if(funcName === 'apiProgressGetItems') {
+              var mockOid = args[0] || '';
+              var mockRM = args[1] || '';
+              var mockItems = [
+                {rowIndex:2,no:'1',name:'外壁塗装',spec:'シリコン',totalQty:150,unit:'m2',price:2500,estimateAmt:375000,prevCumQty:50,currCumQty:80,progressAmt:200000,progressRate:0.533,periodQty:30,periodPayment:75000,estId:'',orderId:'ORD-001',reportMonth:'2026-03',estimateAmtDisp:'375,000',progressAmtDisp:'200,000',progressRateDisp:'53.3%',periodPaymentDisp:'75,000'},
+                {rowIndex:3,no:'2',name:'足場',spec:'枠組',totalQty:200,unit:'m2',price:1200,estimateAmt:240000,prevCumQty:200,currCumQty:200,progressAmt:240000,progressRate:1.0,periodQty:0,periodPayment:0,estId:'',orderId:'ORD-001',reportMonth:'2026-03',estimateAmtDisp:'240,000',progressAmtDisp:'240,000',progressRateDisp:'100.0%',periodPaymentDisp:'0'}
+              ];
+              if (mockOid) mockItems = mockItems.filter(function(i) { return i.orderId === mockOid; });
+              if (mockRM) mockItems = mockItems.filter(function(i) { return !i.reportMonth || i.reportMonth === mockRM; });
+              resolve(JSON.stringify(mockItems));
+            }
+            else if(funcName === 'apiProgressUpdateCumQty') resolve(JSON.stringify({ success: true, row: {rowIndex:2,no:'1',name:'外壁塗装',spec:'シリコン',totalQty:150,unit:'m2',price:2500,estimateAmt:375000,prevCumQty:50,currCumQty:100,progressAmt:250000,progressRate:0.667,periodQty:50,periodPayment:125000,estId:'',orderId:'ORD-001',reportMonth:'2026-03',estimateAmtDisp:'375,000',progressAmtDisp:'250,000',progressRateDisp:'66.7%',periodPaymentDisp:'125,000'} }));
+            else if(funcName === 'apiProgressImportFromEstimate') resolve(JSON.stringify({ success: true, added: 3, skipped: 0 }));
+            else if(funcName === 'apiProgressImportFromOrder') resolve(JSON.stringify({ success: true, added: 2, skipped: 1 }));
+            else if(funcName === 'apiProgressImportManual') resolve(JSON.stringify({ success: true, added: 1, skipped: 0 }));
+            else if(funcName === 'apiProgressMonthlyCloseOrder') { var _ym = args[1] || '2026-03'; var _p = _ym.split('-'); var _ny = Number(_p[0]), _nm = Number(_p[1])+1; if(_nm>12){_nm=1;_ny++;} resolve(JSON.stringify({ success: true, nextMonth: _ny+'-'+String(_nm).padStart(2,'0'), count: 2 })); }
+            else if(funcName === 'apiProgressGetReportHeader') resolve(JSON.stringify({ projectNo: '', contractAmount: '', projectName: '', location: '', deliveryTo: '', constructionPeriod: '', personInCharge: '' }));
+            else if(funcName === 'apiProgressSaveReportHeader') resolve(JSON.stringify({ success: true }));
+            else if(funcName === 'apiProgressGeneratePdf') resolve(JSON.stringify({ success: true, url: 'https://example.com/mock.pdf', fileName: '工事出来高報告書_20260301.pdf' }));
+            else if(funcName === 'apiProgressBatchUpdate') resolve(JSON.stringify({ success: true, items: JSON.parse(JSON.stringify(progressItems?.value || [])) }));
+            else if(funcName === 'apiProgressDeleteRow') resolve(JSON.stringify({ success: true, items: JSON.parse(JSON.stringify((progressItems?.value || []).filter(i => i.rowIndex !== args[0]))) }));
             else reject('GAS Environment not found');
             return;
         }
@@ -2732,6 +3881,78 @@ window.__script2Ran = true;
             const bulkPriceTarget = ref('price');
             const bulkPricePercent = ref(10);
 
+            // 出来高報告 — 一覧画面
+            const progressReports = ref([]);
+            const progressListLoading = ref(false);
+            const progressListFilter = reactive({ year: '', month: '', vendor: '', project: '' });
+            const progressEditOrderId = ref('');
+            // 出来高報告 — 編集画面（月セレクタ）
+            const progressEditYear = ref('');
+            const progressEditMonth = ref('');
+            const progressEditYM = computed(() => {
+              const y = progressEditYear.value, m = progressEditMonth.value;
+              if (!y || !m) return '';
+              return y + '-' + String(m).padStart(2, '0');
+            });
+            // 出来高報告 — 編集画面（既存維持）
+            const progressItems = ref([]);
+            const progressLoading = ref(false);
+            const progressSaving = ref(false);
+            const progressExpandedIdx = ref(null);
+            const progressEditQty = ref('');
+            const progressReportForm = reactive({
+              projectNo: '', contractAmount: '', projectName: '', location: '',
+              deliveryTo: '', constructionPeriod: '', personInCharge: ''
+            });
+            const progressPdfResult = ref(null);
+            const progressDirtyRows = ref(new Set());
+            const progressSummary = computed(() => {
+              const items = progressItems.value;
+              const estimateTotal = items.reduce((s, i) => s + (Number(i.estimateAmt) || 0), 0);
+              const progressTotal = items.reduce((s, i) => s + (Number(i.progressAmt) || 0), 0);
+              const periodPaymentTotal = items.reduce((s, i) => s + (Number(i.periodPayment) || 0), 0);
+              const overallRate = estimateTotal > 0 ? progressTotal / estimateTotal : 0;
+              return { estimateTotal, progressTotal, overallRate, periodPaymentTotal };
+            });
+            // 出来高報告 — 一覧 computed
+            const getOrderVendor = (orderId) => {
+              if (!orderId) return '';
+              const o = orders.value.find(o => o.id === orderId);
+              return o ? (o.vendor || '') : '';
+            };
+            const getOrderProject = (orderId) => {
+              if (!orderId) return '';
+              const o = orders.value.find(o => o.id === orderId);
+              return o ? (o.project || '') : '';
+            };
+            const filteredProgressReports = computed(() => {
+              let list = progressReports.value;
+              const fv = (progressListFilter.vendor || '').trim();
+              const fp = (progressListFilter.project || '').trim();
+              if (fv) list = list.filter(r => getOrderVendor(r.orderId).includes(fv));
+              if (fp) list = list.filter(r => {
+                var pn = (r.headerInfo && r.headerInfo.projectName) || getOrderProject(r.orderId) || '';
+                return pn.includes(fp);
+              });
+              return list;
+            });
+            const progressListSummary = computed(() => {
+              const list = filteredProgressReports.value;
+              const estimateTotal = list.reduce((s, r) => s + (r.estimateTotal || 0), 0);
+              const progressTotal = list.reduce((s, r) => s + (r.progressTotal || 0), 0);
+              const periodPaymentTotal = list.reduce((s, r) => s + (r.periodPaymentTotal || 0), 0);
+              const overallRate = estimateTotal > 0 ? progressTotal / estimateTotal : 0;
+              return { estimateTotal, progressTotal, overallRate, periodPaymentTotal, count: list.length };
+            });
+            const progressListVendors = computed(() => {
+              const set = new Set();
+              progressReports.value.forEach(r => {
+                var v = getOrderVendor(r.orderId);
+                if (v) set.add(v);
+              });
+              return [...set].sort();
+            });
+
             // Phase 2: マスタデータ
             const unifiedProducts = ref([]);
             const unitOptions = computed(() => {
@@ -2743,6 +3964,7 @@ window.__script2Ran = true;
             const searchMasterKeyword = ref("");
             const searchSetKeyword = ref("");
             const materialPrices = ref([]);
+            const materialInclPrices = ref([]);
             const searchMaterialKeyword = ref("");
             const materialEditIdx = ref(null); // null=none, 'new'=adding, number=editing
             const materialEditData = reactive({ product: '', spec: '', unit: '', price: 0 });
@@ -2753,15 +3975,28 @@ window.__script2Ran = true;
             // 選択モード（Toggle Mode）
             const isSelectionMode = ref(false);
             const lastSelectedIndex = ref(null); // Shift範囲選択用
+            const showSelectedCalc = ref(false);
 
             // 右クリックメニュー & セルナビゲーション
             const contextMenu = reactive({ show: false, x: 0, y: 0, rowIndex: -1, target: '' });
+            const dragState = reactive({ dragging: false, fromIdx: -1, toIdx: -1, target: '' });
+            const contextMenuEl = ref(null);
             const onRowContextMenu = (event, index, target) => {
-                contextMenu.show = true;
-                contextMenu.x = Math.min(event.clientX, window.innerWidth - 180);
-                contextMenu.y = Math.min(event.clientY, window.innerHeight - 100);
+                contextMenu.x = event.clientX;
+                contextMenu.y = event.clientY;
                 contextMenu.rowIndex = index;
                 contextMenu.target = target;
+                contextMenu.show = true;
+                nextTick(() => {
+                    const el = contextMenuEl.value;
+                    if (!el) return;
+                    const rect = el.getBoundingClientRect();
+                    const vw = window.innerWidth;
+                    const bar = document.querySelector('.function-bar');
+                    const maxBottom = bar ? bar.getBoundingClientRect().top : window.innerHeight;
+                    if (rect.right > vw) contextMenu.x = Math.max(0, vw - rect.width - 5);
+                    if (rect.bottom > maxBottom) contextMenu.y = Math.max(0, maxBottom - rect.height - 5);
+                });
             };
             const insertRow = (position) => {
                 const idx = position === 'above' ? contextMenu.rowIndex : contextMenu.rowIndex + 1;
@@ -2772,6 +4007,115 @@ window.__script2Ran = true;
                 }
                 contextMenu.show = false;
             };
+
+            const moveRowUp = () => {
+                const idx = contextMenu.rowIndex;
+                const items = contextMenu.target === 'estimate' ? form.items : dedicatedOrderForm.items;
+                if (idx <= 0) { contextMenu.show = false; return; }
+                const [item] = items.splice(idx, 1);
+                items.splice(idx - 1, 0, item);
+                contextMenu.show = false;
+                isDirty.value = true;
+            };
+
+            const moveRowDown = () => {
+                const idx = contextMenu.rowIndex;
+                const items = contextMenu.target === 'estimate' ? form.items : dedicatedOrderForm.items;
+                if (idx >= items.length - 1) { contextMenu.show = false; return; }
+                const [item] = items.splice(idx, 1);
+                items.splice(idx + 1, 0, item);
+                contextMenu.show = false;
+                isDirty.value = true;
+            };
+
+            const moveSelectedRowsUp = () => {
+                const items = contextMenu.target === 'estimate' ? form.items : dedicatedOrderForm.items;
+                const indices = [];
+                items.forEach((it, i) => { if (it.selected) indices.push(i); });
+                if (!indices.length || indices[0] === 0) { contextMenu.show = false; return; }
+                for (const idx of indices) {
+                    const [item] = items.splice(idx, 1);
+                    items.splice(idx - 1, 0, item);
+                }
+                contextMenu.show = false;
+                isDirty.value = true;
+            };
+
+            const moveSelectedRowsDown = () => {
+                const items = contextMenu.target === 'estimate' ? form.items : dedicatedOrderForm.items;
+                const indices = [];
+                items.forEach((it, i) => { if (it.selected) indices.push(i); });
+                if (!indices.length || indices[indices.length - 1] >= items.length - 1) { contextMenu.show = false; return; }
+                for (let j = indices.length - 1; j >= 0; j--) {
+                    const idx = indices[j];
+                    const [item] = items.splice(idx, 1);
+                    items.splice(idx + 1, 0, item);
+                }
+                contextMenu.show = false;
+                isDirty.value = true;
+            };
+
+            // ドラッグ&ドロップ行移動
+            const onRowDragStart = (event, idx, target) => {
+                dragState.dragging = true;
+                dragState.fromIdx = idx;
+                dragState.target = target;
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', String(idx));
+                event.target.closest('tr').style.opacity = '0.4';
+            };
+
+            const onRowDragOver = (event, idx) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                dragState.toIdx = idx;
+            };
+
+            const onRowDrop = (event, idx) => {
+                event.preventDefault();
+                const items = dragState.target === 'estimate' ? form.items : dedicatedOrderForm.items;
+                const from = dragState.fromIdx;
+                const to = idx;
+                if (from === to) { resetDragState(); return; }
+
+                const fromItem = items[from];
+                if (fromItem && fromItem.selected) {
+                    // 選択行を一括移動
+                    const selected = [];
+                    const rest = [];
+                    items.forEach(it => { (it.selected ? selected : rest).push(it); });
+                    const dropTarget = items[to];
+                    let insertAt;
+                    if (dropTarget && !dropTarget.selected) {
+                        insertAt = rest.indexOf(dropTarget);
+                        if (to > from) insertAt++;
+                    } else {
+                        insertAt = rest.length;
+                    }
+                    rest.splice(insertAt, 0, ...selected);
+                    items.splice(0, items.length, ...rest);
+                } else {
+                    // 単一行移動
+                    const [item] = items.splice(from, 1);
+                    items.splice(from < to ? to - 1 : to, 0, item);
+                }
+                isDirty.value = true;
+                resetDragState();
+            };
+
+            const onRowDragEnd = (event) => {
+                const tr = event.target.closest('tr');
+                if (tr) tr.style.opacity = '';
+                resetDragState();
+            };
+
+            const resetDragState = () => {
+                dragState.dragging = false;
+                dragState.fromIdx = -1;
+                dragState.toIdx = -1;
+                dragState.target = '';
+            };
+
             const cellNav = (event) => {
                 const el = event.target;
                 const row = Number(el.dataset.row);
@@ -2890,7 +4234,16 @@ window.__script2Ran = true;
                 remindersLoading.value = true;
                 try {
                     const json = await gas('apiGetReminders');
-                    reminders.value = JSON.parse(json);
+                    const items = JSON.parse(json);
+                    // 月末5日以内なら月締めリマインド追加
+                    const _today = new Date();
+                    const _lastDay = new Date(_today.getFullYear(), _today.getMonth() + 1, 0).getDate();
+                    const _daysLeft = _lastDay - _today.getDate();
+                    if (_daysLeft <= 5) {
+                        items.push({ type: 'monthly_close', severity: 'warning', id: 'monthly_close',
+                            label: '出来高報告の月次締め作業を行ってください（月末まであと' + _daysLeft + '日）' });
+                    }
+                    reminders.value = items;
                 } catch (e) {
                     console.warn('fetchReminders failed:', e);
                     reminders.value = [];
@@ -3151,7 +4504,7 @@ window.__script2Ran = true;
             const orderListFilter = reactive({ vendor: '', year: '', month: '' });
             
             const showOcrModal = ref(false); const ocrFiles = ref([]); const isOcrLoading = ref(false); const selectedOcrFiles = ref([]);
-            const ocrTab = ref('upload'); const ocrUploadFiles = ref([]); const ocrResults = ref([]); const showOcrPreview = ref(false); const ocrProcessing = ref(false);
+            const ocrTab = ref('upload'); const ocrUploadFiles = ref([]); const ocrResults = ref([]); const showOcrPreview = ref(false); const ocrProcessing = ref(false); const ocrPricingMode = ref('price_only');
             const showDraftModal = ref(false); const drafts = ref([]); const isDraftLoading = ref(false);
             const estimateCandidates = ref([]); // 追加
             
@@ -3167,6 +4520,43 @@ window.__script2Ran = true;
             // 改善7: 業者別プレビュー用
             const vendorSplitPreview = ref(null); // { vendors: { name, items, total }, totalAmount, action: 'save'|'pdf' }
             
+            // --- モバイル検出 ---
+            const isMobile = ref(window.innerWidth <= 768);
+            const mobileSheetOpen = ref(null); // 'left' | 'right' | null
+
+            // --- モバイル見積編集UI ---
+            const mobileHeaderOpen = ref(false);
+            const expandedCardIdx = ref(null);
+            const cardMenuIdx = ref(null);
+            const mobileToolbarMore = ref(false);
+            const toggleCardExpand = (idx) => {
+                expandedCardIdx.value = expandedCardIdx.value === idx ? null : idx;
+                cardMenuIdx.value = null;
+            };
+            const toggleCardMenu = (idx) => {
+                cardMenuIdx.value = cardMenuIdx.value === idx ? null : idx;
+            };
+            const closeCardMenu = () => { cardMenuIdx.value = null; };
+            const cardAction = (action, idx) => {
+                contextMenu.rowIndex = idx;
+                contextMenu.target = 'estimate';
+                if (action === 'insertAbove') insertRow('above');
+                else if (action === 'insertBelow') insertRow('below');
+                else if (action === 'moveUp') moveRowUp();
+                else if (action === 'moveDown') moveRowDown();
+                else if (action === 'delete') removeItem(idx);
+                cardMenuIdx.value = null;
+            };
+
+            // --- 音声入力 (Web Speech API) ---
+            const isVoiceSupported = ref(false);
+            const isListening = ref(false);
+            const voiceTranscript = ref('');
+            let speechRecognition = null;
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+              isVoiceSupported.value = true;
+            }
+
             // --- AIアシスタントボタン表示/非表示 ---
             const assistantBtnVisible = ref(localStorage.getItem('assistantBtnVisible') !== 'false');
             const assistantCtxMenu = reactive({ show: false, x: 0, y: 0 });
@@ -3219,6 +4609,7 @@ window.__script2Ran = true;
             };
 
             const onChatDragStart = (e) => {
+                if (isMobile.value) return; // モバイルではドラッグ無効
                 const point = e.touches ? e.touches[0] : e;
                 chatDragState.startX = point.clientX;
                 chatDragState.startY = point.clientY;
@@ -3272,6 +4663,7 @@ window.__script2Ran = true;
 
             // --- フローティングパネル ドラッグ処理 ---
             const onFloatingPanelDragStart = (e) => {
+                if (isMobile.value) return; // モバイルではドラッグ無効
                 const point = e.touches ? e.touches[0] : e;
                 floatingPanelDragState.startX = point.clientX;
                 floatingPanelDragState.startY = point.clientY;
@@ -3329,6 +4721,18 @@ window.__script2Ran = true;
             const orderPanelTab = ref('create'); // 'create' | 'list'
             const batchVendorSelect = ref('');
             const tempBatchVendor = ref(''); // 発注パネル用の一括発注先
+            const showVendorChangeModal = ref(false);
+            const vendorChangeTarget = ref('');
+            const orderPanelBulkPercent = ref(''); // 発注パネル一括単価変更率
+
+            // --- マスタデータ編集画面 ---
+            const masterTab = ref('basic');
+            const masterData = reactive({ headers: [], data: [], loading: false });
+            const masterSearch = ref('');
+            const masterEditRow = ref(null); // 編集中の行インデックス
+            const masterEditValues = ref([]);
+            const masterAddRow = ref(false);
+            const masterAddValues = ref([]);
             const orderHistoryPanelFilter = ref(''); // 発注書履歴のフィルタ用
 
             // --- フローティングプレビューパネル ---
@@ -3387,12 +4791,18 @@ window.__script2Ran = true;
                 }
             });
 
+            // 現在のパネルモードに応じたデータソース
+            const activeMaterialPrices = computed(() => {
+                return leftPanelMode.value === 'material_incl' ? materialInclPrices.value : materialPrices.value;
+            });
+
             const filteredMaterialPrices = computed(() => {
+                const source = activeMaterialPrices.value;
                 const kw = searchMaterialKeyword.value.toLowerCase().trim();
-                if (!kw) return materialPrices.value.slice(0, 1000);
+                if (!kw) return source.slice(0, 1000);
                 try {
                     const keywords = kw.split(/\s+/).filter(k => k);
-                    return materialPrices.value.filter(m => {
+                    return source.filter(m => {
                         const p = String(m.product || '').toLowerCase();
                         const s = String(m.spec || '').toLowerCase();
                         const u = String(m.unit || '').toLowerCase();
@@ -3418,33 +4828,62 @@ window.__script2Ran = true;
                     unit: materialEditData.unit.trim(),
                     price: Number(materialEditData.price) || 0
                 };
+                const isIncl = leftPanelMode.value === 'material_incl';
+                const targetArr = isIncl ? materialInclPrices : materialPrices;
+                const apiSheetType = isIncl ? 'incl' : undefined;
                 const isNew = materialEditIdx.value === 'new';
                 // 楽観的更新: ローカル配列を即座に反映
                 if (isNew) {
-                    materialPrices.value.unshift({ ...item, updatedAt: '' });
+                    targetArr.value.unshift({ ...item, updatedAt: '' });
                 } else {
                     const idx = materialEditIdx.value;
-                    if (idx != null && materialPrices.value[idx]) {
-                        Object.assign(materialPrices.value[idx], item);
+                    if (idx != null && targetArr.value[idx]) {
+                        Object.assign(targetArr.value[idx], item);
                     }
                 }
                 materialEditIdx.value = null;
                 notify(isNew ? "追加しました" : "更新しました");
                 // バックグラウンドでAPI保存
-                gas('apiUpsertMaterialPrices', JSON.stringify([item]))
+                gas('apiUpsertMaterialPrices', JSON.stringify([item]), apiSheetType)
                     .catch(e => notify("保存失敗: " + e.message, "error"));
             };
             const deleteMaterialItem = async (m) => {
                 if (!confirm(`「${m.product}」を削除しますか？`)) return;
+                const isIncl = leftPanelMode.value === 'material_incl';
+                const targetArr = isIncl ? materialInclPrices : materialPrices;
+                const apiSheetType = isIncl ? 'incl' : undefined;
                 // 楽観的更新: ローカル配列から即座に削除
-                const idx = materialPrices.value.findIndex(p => p.product === m.product && (p.spec || '') === (m.spec || ''));
-                if (idx !== -1) materialPrices.value.splice(idx, 1);
+                const idx = targetArr.value.findIndex(p => p.product === m.product && (p.spec || '') === (m.spec || ''));
+                if (idx !== -1) targetArr.value.splice(idx, 1);
                 materialEditIdx.value = null;
                 notify("削除しました");
                 // バックグラウンドでAPI削除
-                gas('apiDeleteMaterialPrice', m.product, m.spec || '')
+                gas('apiDeleteMaterialPrice', m.product, m.spec || '', apiSheetType)
                     .then(res => { const r = JSON.parse(res); if (!r.success) notify(r.message || "削除失敗", "error"); })
                     .catch(e => notify("削除エラー: " + e.message, "error"));
+            };
+
+            const clearAllMaterialPrices = async () => {
+                const isIncl = leftPanelMode.value === 'material_incl';
+                const label = isIncl ? '材料（施工込）単価マスタ' : '材料費単価マスタ';
+                if (!confirm(label + 'の全データを削除しますか？\nこの操作は元に戻せません。')) return;
+                const apiSheetType = isIncl ? 'incl' : undefined;
+                loading.value = true;
+                loadingMessage.value = label + 'データ削除中...';
+                try {
+                    const res = JSON.parse(await gas('apiClearMaterialPrices', apiSheetType));
+                    if (res.success) {
+                        if (isIncl) { materialInclPrices.value = []; }
+                        else { materialPrices.value = []; }
+                        notify(res.deleted + '件のデータを削除しました', 'success');
+                    } else {
+                        notify('削除失敗: ' + (res.message || ''), 'error');
+                    }
+                } catch (e) {
+                    notify('削除エラー: ' + (e.message || e), 'error');
+                } finally {
+                    loading.value = false;
+                }
             };
 
             const filteredSets = computed(() => {
@@ -3860,6 +5299,16 @@ window.__script2Ran = true;
                     } catch(e) { console.error(e); }
                     finally { loading.value = false; }
                 }
+                // 材料（施工込）単価マスタ時: 未読込なら遅延取得
+                if (mode === 'material_incl' && materialInclPrices.value.length === 0) {
+                    loadingMessage.value = '材料（施工込）単価マスタ読込中';
+                    loading.value = true;
+                    try {
+                        const res = await gas('apiGetMaterialPrices', 'incl');
+                        materialInclPrices.value = JSON.parse(res);
+                    } catch(e) { console.error(e); }
+                    finally { loading.value = false; }
+                }
             };
 
             const closeLeftPanel = () => {
@@ -3888,8 +5337,11 @@ window.__script2Ran = true;
                     row.spec = master.spec;
                     row.unit = master.unit;
                     row.price = master.price;
+                    if (leftPanelMode.value === 'material_incl') {
+                        row.cost = master.price;
+                    }
                     calcLine(row);
-                    notify("反映しました");
+                    notify(leftPanelMode.value === 'material_incl' ? "反映しました（施工込・原価にも適用）" : "反映しました");
                     form.items.splice(activeLeftPanelRow.value + 1, 0, { _uid: genUid(), category: "", product: "", spec: "", qty: "", unit: "", price: "", cost: "", amount: 0, orderedQty: "", orderedAmount: 0, selected: false });
                     activeLeftPanelRow.value = activeLeftPanelRow.value + 1;
                 }
@@ -4026,9 +5478,21 @@ window.__script2Ran = true;
             });
             
             onMounted(async () => {
+              // モバイルキーボード対応: visualViewportで実際の表示領域を追跡
+              const updateAppVh = () => {
+                  const vh = (window.visualViewport ? window.visualViewport.height : window.innerHeight) * 0.01;
+                  document.documentElement.style.setProperty('--app-vh', vh + 'px');
+              };
+              updateAppVh();
+              if (window.visualViewport) {
+                  window.visualViewport.addEventListener('resize', updateAppVh);
+              }
+              window.addEventListener('resize', updateAppVh);
+
               // チャットボット初期位置 & リサイズ
               initChatPosition();
               window.addEventListener('resize', () => {
+                  isMobile.value = window.innerWidth <= 768;
                   const elW = showChatBot.value ? 500 : 56;
                   const elH = showChatBot.value ? (650 + 56 + 16) : 56;
                   chatPosX.value = Math.max(0, Math.min(chatPosX.value, window.innerWidth - elW));
@@ -4058,7 +5522,7 @@ window.__script2Ran = true;
                   
                   // セッション保持: リロード前のタブを復元（なければメニュー）
                   const savedTab = sessionStorage.getItem('currentTab');
-                  if (savedTab && ['menu','list','edit','admin','invoice','order','dedicated_order'].includes(savedTab)) {
+                  if (savedTab && ['menu','list','edit','admin','invoice','order','dedicated_order','master'].includes(savedTab)) {
                     currentTab.value = savedTab;
                   } else {
                     currentTab.value = 'menu';
@@ -4295,7 +5759,15 @@ window.__script2Ran = true;
                     }
                     const h = data.header;
                     const items = data.items || [];
-                    if (floatingPanel.targetContext === 'estimate') {
+                    if (floatingPanel.targetContext === 'progress') {
+                      // 出来高報告: 発注IDをセットして編集画面へ遷移
+                      progressEditOrderId.value = id;
+                      closeFloatingPanel();
+                      currentTab.value = 'progress_edit';
+                      await loadProgressEditData(id);
+                      notify('発注「' + id + '」の出来高報告を開きました');
+                      return;
+                    } else if (floatingPanel.targetContext === 'estimate') {
                         // ヘッダー反映
                         if (h) {
                             form.header.client = h.client || form.header.client;
@@ -4518,7 +5990,8 @@ window.__script2Ran = true;
 
             // 選択中明細の件数
             const selectedItemsCount = computed(() => form.items.filter(i => i.selected).length );
-            
+            watch(selectedItemsCount, (v) => { if (v === 0) showSelectedCalc.value = false; });
+
             // 改善5: モード廃止 — toggleSelectionMode は後方互換用に残す（no-op）
             const toggleSelectionMode = () => {};
             
@@ -4647,7 +6120,48 @@ window.__script2Ran = true;
                 if (typeof lastSelectedIndex !== 'undefined') lastSelectedIndex.value = null;
                 notify(`${selected.length}件の発注先を更新しました`);
             };
-            
+
+            // 右クリックメニューからの発注先一括変更
+            const applyVendorChangeFromMenu = () => {
+                const vendor = (vendorChangeTarget.value || "").trim();
+                if (!vendor) return notify("発注先を選択してください", "error");
+                const selected = form.items.filter(i => i.selected);
+                if (selected.length === 0) return notify("変更する明細を選択してください", "error");
+                selected.forEach(item => {
+                    item.vendor = vendor;
+                    calcLine(item);
+                });
+                vendorChangeTarget.value = '';
+                showVendorChangeModal.value = false;
+                notify(`${selected.length}件の発注先を「${vendor}」に変更しました`);
+            };
+
+            // 見積→発注に一括コピー（見積編集画面用）
+            const copyEstimateToOrder = () => {
+                const selected = form.items.filter(i => i.selected);
+                if (selected.length === 0) return notify('コピーする明細を選択してください', 'error');
+                selected.forEach(item => {
+                    item.cost = item.price;
+                    item.orderedQty = item.qty;
+                    item.exeUnit = item.unit;
+                    calcLine(item);
+                });
+                notify(`${selected.length}件の見積単価・数量を発注側にコピーしました`);
+            };
+
+            // 見積→発注に一括コピー（発注書編集画面用）
+            const copyDedicatedEstToExe = () => {
+                const selected = dedicatedOrderForm.items.filter(i => i.selected);
+                if (selected.length === 0) return notify('コピーする明細を選択してください', 'error');
+                selected.forEach(item => {
+                    item.exePrice = item.estPrice;
+                    item.exeQty = item.estQty;
+                    item.exeUnit = item.estUnit;
+                    calcDedicatedLine(item);
+                });
+                notify(`${selected.length}件の見積単価・数量を実行側にコピーしました`);
+            };
+
             // Phase 3: 見積行削除時の同期
             const addItem = () => form.items.push({ _uid: genUid(), category: "", product: "", spec: "", qty: "", unit: "", price: "", cost: "", amount: 0, orderedQty: "", orderedAmount: 0, selected: false });
 
@@ -4683,6 +6197,136 @@ window.__script2Ran = true;
                 orderInPanel.vendor = vendor;
                 notify(`${orderInPanel.items.length}件の発注先を「${vendor}」に変更しました`);
                 tempBatchVendor.value = '';
+            };
+
+            // 発注パネルの一括単価変更
+            const applyOrderPanelBulkPriceChange = () => {
+                const pct = Number(orderPanelBulkPercent.value);
+                if (isNaN(pct) || pct === 0) { notify('変更率を入力してください', 'error'); return; }
+                const items = orderInPanel.items;
+                if (items.length === 0) { notify('対象行がありません', 'error'); return; }
+                const multiplier = 1 + pct / 100;
+                let count = 0;
+                items.forEach(item => {
+                    const currentCost = Number(item.cost) || 0;
+                    if (currentCost === 0) return;
+                    item.cost = Math.round(currentCost * multiplier);
+                    count++;
+                });
+                notify(count + '行の発注単価を' + (pct > 0 ? '+' : '') + pct + '%変更しました', 'success');
+            };
+
+            // --- マスタデータ編集画面の関数 ---
+            const MASTER_LABELS = {
+                basic: '基本単価マスタ', client: '元請別単価マスタ', set: '見積セットマスタ',
+                vendor: '業者マスタ', material: '材料費単価マスタ', material_incl: '材料（施工込）単価マスタ', journal: '仕訳設定マスタ'
+            };
+
+            const loadMasterData = async (type) => {
+                if (type) masterTab.value = type;
+                masterData.loading = true;
+                masterEditRow.value = null;
+                masterAddRow.value = false;
+                masterSearch.value = '';
+                try {
+                    const res = JSON.parse(await gas('apiGetMasterData', masterTab.value));
+                    if (res.error) { notify('マスタデータ取得エラー: ' + res.error, 'error'); return; }
+                    masterData.headers = res.headers;
+                    masterData.data = res.data;
+                } catch (e) {
+                    notify('マスタデータ取得失敗: ' + (e.message || e), 'error');
+                } finally {
+                    masterData.loading = false;
+                }
+            };
+
+            const filteredMasterRows = computed(() => {
+                if (!masterSearch.value) return masterData.data;
+                const kw = masterSearch.value.toLowerCase().split(/\s+/).filter(k => k);
+                return masterData.data.filter(row => {
+                    const text = row.join(' ').toLowerCase();
+                    return kw.every(k => text.includes(k));
+                });
+            });
+
+            const startMasterEdit = (rowIndex) => {
+                masterEditRow.value = rowIndex;
+                masterEditValues.value = [...masterData.data[rowIndex]];
+            };
+
+            const cancelMasterEdit = () => {
+                masterEditRow.value = null;
+                masterEditValues.value = [];
+            };
+
+            const saveMasterRow = async () => {
+                if (masterEditRow.value === null) return;
+                loading.value = true;
+                loadingMessage.value = '保存中...';
+                try {
+                    const res = JSON.parse(await gas('apiUpdateMasterRow', masterTab.value, masterEditRow.value, JSON.stringify(masterEditValues.value)));
+                    if (res.success) {
+                        masterData.data[masterEditRow.value] = [...masterEditValues.value];
+                        masterEditRow.value = null;
+                        notify('更新しました', 'success');
+                    } else {
+                        notify('更新失敗: ' + (res.message || ''), 'error');
+                    }
+                } catch (e) {
+                    notify('更新エラー: ' + (e.message || e), 'error');
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const openMasterAddRow = () => {
+                masterAddRow.value = true;
+                masterAddValues.value = masterData.headers.map(() => '');
+            };
+
+            const cancelMasterAdd = () => {
+                masterAddRow.value = false;
+                masterAddValues.value = [];
+            };
+
+            const addMasterRow = async () => {
+                loading.value = true;
+                loadingMessage.value = '追加中...';
+                try {
+                    const res = JSON.parse(await gas('apiAddMasterRow', masterTab.value, JSON.stringify(masterAddValues.value)));
+                    if (res.success) {
+                        masterData.data.push([...masterAddValues.value]);
+                        masterAddRow.value = false;
+                        masterAddValues.value = [];
+                        notify('追加しました', 'success');
+                    } else {
+                        notify('追加失敗: ' + (res.message || ''), 'error');
+                    }
+                } catch (e) {
+                    notify('追加エラー: ' + (e.message || e), 'error');
+                } finally {
+                    loading.value = false;
+                }
+            };
+
+            const deleteMasterRow = async (rowIndex) => {
+                if (!confirm('この行を削除しますか？この操作は元に戻せません。')) return;
+                loading.value = true;
+                loadingMessage.value = '削除中...';
+                try {
+                    const res = JSON.parse(await gas('apiDeleteMasterRow', masterTab.value, rowIndex));
+                    if (res.success) {
+                        masterData.data.splice(rowIndex, 1);
+                        if (masterEditRow.value === rowIndex) masterEditRow.value = null;
+                        notify('削除しました', 'success');
+                    } else {
+                        notify('削除失敗: ' + (res.message || ''), 'error');
+                    }
+                } catch (e) {
+                    notify('削除エラー: ' + (e.message || e), 'error');
+                } finally {
+                    loading.value = false;
+                }
             };
 
             // 発注パネルの内容を見積明細に反映する（発注は作成しない）
@@ -4758,7 +6402,7 @@ window.__script2Ran = true;
                 currentTab.value = 'menu';
             };
             const handleBack = () => { if(isReviewMode.value) { currentTab.value = 'admin'; } else { currentTab.value = 'list'; } };
-            const handleNavigation = (tab) => { checkUnsavedChanges(() => { if (tab === 'dedicated_order') { createNewDedicatedOrder(); fetchProjects(true, true); } currentTab.value = tab; }); };
+            const handleNavigation = (tab, showHistory = false) => { checkUnsavedChanges(() => { if (tab === 'dedicated_order') { createNewDedicatedOrder(); fetchProjects(true, true); } if (tab === 'master') { loadMasterData(); } if (tab === 'progress') { const _now = new Date(); progressListFilter.year = String(_now.getFullYear()); progressListFilter.month = String(_now.getMonth() + 1); loadProgressReportList(); fetchOrders(true).catch(() => {}); } currentTab.value = tab; if (showHistory && tab === 'dedicated_order') { openFloatingPanelList('order', 'order'); } }); };
             const formatCurrency = (val) => Number(val || 0).toLocaleString();
             
             const fetchProjects = async (skipLoading = false, force = false) => {
@@ -4969,7 +6613,7 @@ window.__script2Ran = true;
                 closeLeftPanel();
             };
             // 見積関連（unifiedProducts は編集画面表示時に遅延取得）
-            const createNewEstimate = async () => {
+            const createNewEstimate = async (showHistory = false) => {
                 if (unifiedProducts.value.length === 0) {
                     loadingMessage.value = '読込中';
                     loading.value = true;
@@ -4986,17 +6630,9 @@ window.__script2Ran = true;
                 isDirty.value = false;
                 orderInPanel.items = [];
                 currentTab.value = 'edit';
-            };
-            // メニューから履歴を開きつつ編集画面へ遷移
-            const openEstimateHistoryFromMenu = async () => {
-                await createNewEstimate();
-                openFloatingPanelList('estimate', 'estimate');
-            };
-            const openOrderHistoryFromMenu = async () => {
-                createNewDedicatedOrder();
-                fetchProjects(true);
-                currentTab.value = 'dedicated_order';
-                openFloatingPanelList('order', 'order');
+                if (showHistory) {
+                    openFloatingPanelList('estimate', 'estimate');
+                }
             };
 
             const loadEstimate = async (id, fromList=false) => {
@@ -5136,6 +6772,17 @@ window.__script2Ran = true;
             };
             const totalAmount = computed(() => form.items.reduce((s, i) => s + (Number(i.amount) || 0), 0));
             const totalEstimatedCost = computed(() => form.items.reduce((s, i) => s + (Number(i.orderedAmount) || 0), 0));
+            const selectedTotalAmount = computed(() =>
+                form.items.filter(i => i.selected).reduce((s, i) => s + (Number(i.amount) || 0), 0)
+            );
+            const selectedTotalCost = computed(() =>
+                form.items.filter(i => i.selected).reduce((s, i) => s + (Number(i.orderedAmount) || 0), 0)
+            );
+            const lastSelectedIdx = computed(() => {
+                let last = -1;
+                form.items.forEach((it, i) => { if (it.selected) last = i; });
+                return last;
+            });
             const calculateMargin = (item) => {
                 const rev = Number(item.amount) || 0;
                 if (!rev) return 0;
@@ -5393,16 +7040,21 @@ window.__script2Ran = true;
                 }
                 showOcrModal.value = false;
                 showOcrPreview.value = false;
-                // 材料費単価マスタに自動蓄積（バックグラウンド）
+                // 選択したマスタに自動蓄積（バックグラウンド）
+                const isIncl = ocrPricingMode.value === 'price_and_cost';
+                const apiSheetType = isIncl ? 'incl' : undefined;
                 const materialItems = items.filter(it => it.product).map(it => ({
                     product: it.product || '', spec: it.spec || '',
                     unit: it.unit || '式', price: Number(it.price) || 0
                 }));
                 if (materialItems.length > 0) {
-                    gas('apiUpsertMaterialPrices', JSON.stringify(materialItems))
-                        .then(() => gas('apiGetMaterialPrices'))
-                        .then(res => { materialPrices.value = JSON.parse(res); })
-                        .catch(e => console.warn('材料費単価マスタ更新失敗:', e));
+                    gas('apiUpsertMaterialPrices', JSON.stringify(materialItems), apiSheetType)
+                        .then(() => gas('apiGetMaterialPrices', apiSheetType))
+                        .then(res => {
+                            if (isIncl) { materialInclPrices.value = JSON.parse(res); }
+                            else { materialPrices.value = JSON.parse(res); }
+                        })
+                        .catch(e => console.warn('材料単価マスタ更新失敗:', e));
                 }
                 ocrResults.value = [];
                 selectedOcrFiles.value = [];
@@ -5771,6 +7423,87 @@ window.__script2Ran = true;
                 });
             };
 
+            // --- モバイルボトムシート制御 ---
+            const openMobileSheet = (panel) => {
+                mobileSheetOpen.value = panel; // 'left' or 'right'
+            };
+            const closeMobileSheet = () => {
+                mobileSheetOpen.value = null;
+                // デスクトップと違い、パネル自体は閉じない（CSSで非表示になるだけ）
+            };
+
+            // --- 音声入力関数 ---
+            const startVoiceInput = (targetMode) => {
+                if (!isVoiceSupported.value) return;
+                if (isListening.value) { stopVoiceInput(); return; }
+
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                speechRecognition = new SpeechRecognition();
+                speechRecognition.lang = 'ja-JP';
+                speechRecognition.interimResults = true;
+                speechRecognition.continuous = false;
+                speechRecognition.maxAlternatives = 1;
+
+                speechRecognition.onstart = () => {
+                    isListening.value = true;
+                    voiceTranscript.value = '';
+                    console.log('音声認識を開始しました');
+                };
+
+                speechRecognition.onresult = (event) => {
+                    let interim = '';
+                    let final = '';
+                    for (let i = event.resultIndex; i < event.results.length; i++) {
+                        const transcript = event.results[i][0].transcript;
+                        if (event.results[i].isFinal) {
+                            final += transcript;
+                        } else {
+                            interim += transcript;
+                        }
+                    }
+                    voiceTranscript.value = final || interim;
+                    // テキスト欄にリアルタイム反映
+                    if (targetMode === 'help') {
+                        chatInput.value = final || interim;
+                    } else {
+                        aiAssistantInput.value = final || interim;
+                    }
+                };
+
+                speechRecognition.onend = () => {
+                    isListening.value = false;
+                    console.log('音声認識が終了しました');
+                    // テキスト欄に結果を残し、ユーザーが確認後に送信ボタンを押す
+                };
+
+                speechRecognition.onerror = (event) => {
+                    isListening.value = false;
+                    console.log('音声認識エラー:', event.error);
+                    if (event.error === 'not-allowed') {
+                        notifications.value.push({ id: Date.now(), type: 'error', message: 'マイクの使用が許可されていません。ブラウザの設定を確認してください。' });
+                        setTimeout(() => notifications.value.shift(), 3000);
+                    } else if (event.error === 'no-speech') {
+                        notifications.value.push({ id: Date.now(), type: 'error', message: '音声が検出されませんでした。もう一度お試しください。' });
+                        setTimeout(() => notifications.value.shift(), 3000);
+                    }
+                };
+
+                try {
+                    speechRecognition.start();
+                } catch (e) {
+                    console.log('音声認識の開始に失敗:', e);
+                    isListening.value = false;
+                }
+            };
+
+            const stopVoiceInput = () => {
+                if (speechRecognition) {
+                    speechRecognition.stop();
+                    speechRecognition = null;
+                }
+                isListening.value = false;
+            };
+
             const sendAiAssistantMessage = async () => {
                 const text = aiAssistantInput.value.trim();
                 if (!text) return;
@@ -6072,6 +7805,254 @@ window.__script2Ran = true;
                 }
             };
 
+            // --- 出来高報告 関数 ---
+            const loadProgressReportList = async () => {
+              progressListLoading.value = true;
+              try {
+                var ym = '';
+                var fy = (progressListFilter.year || '').trim();
+                var fm = (progressListFilter.month || '').trim();
+                if (fy && fm) ym = fy + '-' + String(fm).padStart(2, '0');
+                const d = await gas('apiProgressGetReportList', ym);
+                progressReports.value = JSON.parse(d);
+              } catch (e) { console.error('loadProgressReportList: エラー', e); }
+              finally { progressListLoading.value = false; }
+            };
+            const loadProgressEditData = async (orderId, ym) => {
+              progressLoading.value = true;
+              progressPdfResult.value = null;
+              progressDirtyRows.value = new Set();
+              try {
+                // items取得（reportMonth対応）
+                let d = await gas('apiProgressGetItems', orderId, ym || '');
+                let items = JSON.parse(d);
+                // なければ自動取込（全月でorderIdの件数ゼロの場合のみ）
+                if (items.length === 0 && orderId) {
+                  const allD = await gas('apiProgressGetItems', orderId, '');
+                  const allItems = JSON.parse(allD);
+                  if (allItems.length === 0) {
+                    const impD = await gas('apiProgressImportFromOrder', orderId, ym || '');
+                    const impRes = JSON.parse(impD);
+                    if (impRes.success && impRes.added > 0) {
+                      d = await gas('apiProgressGetItems', orderId, ym || '');
+                      items = JSON.parse(d);
+                      notify(impRes.added + '件の品目を発注から取込みました');
+                    }
+                  }
+                }
+                // 今回数量を算出し、0は空欄表示（入力しやすくする）
+                items.forEach(item => {
+                  const cum = Number(item.currCumQty) || 0;
+                  const prev = Number(item.prevCumQty) || 0;
+                  item.periodQty = cum - prev;
+                  if (item.periodQty === 0) item.periodQty = '';
+                });
+                progressItems.value = items;
+                // header取得
+                const hd = await gas('apiProgressGetReportHeader', orderId);
+                const h = JSON.parse(hd);
+                Object.keys(progressReportForm).forEach(k => { progressReportForm[k] = h[k] || ''; });
+                // 発注情報で自動補完
+                if (orderId) {
+                  const o = orders.value.find(o => o.id === orderId);
+                  if (o) {
+                    if (!progressReportForm.projectName && o.project) progressReportForm.projectName = o.project;
+                    if (!progressReportForm.deliveryTo && o.vendor) progressReportForm.deliveryTo = o.vendor;
+                    if (!progressReportForm.location && o.location) progressReportForm.location = o.location;
+                  }
+                }
+              } catch (e) { console.error('loadProgressEditData: エラー', e); }
+              finally { progressLoading.value = false; }
+            };
+            const openProgressEdit = async (orderId) => {
+              progressEditOrderId.value = orderId || '';
+              progressItems.value = [];
+              progressExpandedIdx.value = null;
+              progressEditQty.value = '';
+              Object.keys(progressReportForm).forEach(k => { progressReportForm[k] = ''; });
+              // 年月をリストフィルタから引継ぎ（なければ今月）
+              var now = new Date();
+              progressEditYear.value = (progressListFilter.year || '').trim() || String(now.getFullYear());
+              progressEditMonth.value = (progressListFilter.month || '').trim() || String(now.getMonth() + 1);
+              currentTab.value = 'progress_edit';
+              if (orderId) {
+                await loadProgressEditData(orderId, progressEditYM.value);
+              }
+            };
+            const progressBackToList = async () => {
+              if (progressDirtyRows.value.size > 0) {
+                const ok = await confirmAction('未保存の変更があります。保存せずに一覧に戻りますか？');
+                if (!ok) return;
+              }
+              currentTab.value = 'progress';
+              loadProgressReportList();
+            };
+            const progressSaveAll = async () => {
+              progressSaving.value = true;
+              try {
+                // header保存
+                const oid = progressEditOrderId.value || '';
+                const hd = await gas('apiProgressSaveReportHeader', JSON.stringify(progressReportForm), oid);
+                const hRes = JSON.parse(hd);
+                if (!hRes.success) { notify(hRes.error || 'ヘッダー保存失敗', 'error'); return; }
+                // dirty rows があれば品目も保存
+                if (progressDirtyRows.value.size > 0) {
+                  const payload = progressItems.value
+                    .filter(i => progressDirtyRows.value.has(i.rowIndex))
+                    .map(i => ({ rowIndex: i.rowIndex, currCumQty: Number(i.currCumQty) || 0 }));
+                  const d = await gas('apiProgressBatchUpdate', JSON.stringify(payload));
+                  const res = JSON.parse(d);
+                  if (res.success) {
+                    const ym = progressEditYM.value;
+                    var items = oid ? res.items.filter(i => i.orderId === oid) : res.items;
+                    if (ym) items = items.filter(i => !i.reportMonth || i.reportMonth === ym);
+                    items.forEach(it => { const c = Number(it.currCumQty)||0, p = Number(it.prevCumQty)||0; it.periodQty = c - p || ''; });
+                    progressItems.value = items;
+                    progressDirtyRows.value = new Set();
+                  } else { notify(res.error || '品目保存失敗', 'error'); return; }
+                }
+                notify('報告書を保存しました');
+              } catch (e) { notify('保存エラー: ' + e.message, 'error'); }
+              finally { progressSaving.value = false; }
+            };
+            const toggleProgressExpand = (idx) => {
+              if (progressExpandedIdx.value === idx) { progressExpandedIdx.value = null; progressEditQty.value = ''; }
+              else { progressExpandedIdx.value = idx; progressEditQty.value = String(progressItems.value[idx].periodQty || ''); }
+            };
+            const saveProgressCumQty = async (idx) => {
+              const item = progressItems.value[idx];
+              if (!item) return;
+              progressSaving.value = true;
+              try {
+                const pqty = Number(progressEditQty.value) || 0;
+                const prevQty = Number(item.prevCumQty) || 0;
+                const cumQty = prevQty + pqty;
+                const d = await gas('apiProgressUpdateCumQty', item.rowIndex, cumQty);
+                const res = JSON.parse(d);
+                if (res.success) {
+                  const row = res.row;
+                  const c = Number(row.currCumQty)||0, p = Number(row.prevCumQty)||0;
+                  row.periodQty = c - p || '';
+                  progressItems.value[idx] = row;
+                  progressExpandedIdx.value = null;
+                  notify('数量を更新しました');
+                }
+                else { notify(res.error || '更新失敗', 'error'); }
+              } catch (e) { notify('更新エラー: ' + e.message, 'error'); }
+              finally { progressSaving.value = false; }
+            };
+            const onProgressMonthChange = async () => {
+              if (progressDirtyRows.value.size > 0) {
+                const ok = await confirmAction('未保存の変更があります。保存せずに月を変更しますか？');
+                if (!ok) return;
+              }
+              const oid = progressEditOrderId.value;
+              if (oid && progressEditYM.value) {
+                await loadProgressEditData(oid, progressEditYM.value);
+              }
+            };
+            const progressMonthlyClose = async () => {
+              const oid = progressEditOrderId.value;
+              const ym = progressEditYM.value;
+              if (!oid || !ym) { notify('発注IDと報告月が必要です', 'error'); return; }
+              const ok = await confirmAction('月締め処理（' + ym + '）\n\n' + oid + ' の現在月データを確定し、翌月行を新規作成します。\n前月データはそのまま保持されます。');
+              if (!ok) return;
+              progressSaving.value = true;
+              try {
+                const d = await gas('apiProgressMonthlyCloseOrder', oid, ym);
+                const res = JSON.parse(d);
+                if (res.success) {
+                  notify(res.count + '件の月締めを実行しました → ' + res.nextMonth);
+                  // 翌月に切替
+                  var parts = res.nextMonth.split('-');
+                  progressEditYear.value = parts[0];
+                  progressEditMonth.value = String(Number(parts[1]));
+                  await loadProgressEditData(oid, res.nextMonth);
+                }
+                else { notify(res.error || '月締め失敗', 'error'); }
+              } catch (e) { notify('月締めエラー: ' + e.message, 'error'); }
+              finally { progressSaving.value = false; }
+            };
+            const progressGeneratePdf = async () => {
+              progressSaving.value = true;
+              progressPdfResult.value = null;
+              try {
+                // 保存前にheader自動保存
+                const oid = progressEditOrderId.value || '';
+                const ym = progressEditYM.value;
+                await gas('apiProgressSaveReportHeader', JSON.stringify(progressReportForm), oid);
+                const d = await gas('apiProgressGeneratePdf', JSON.stringify(progressReportForm), oid, ym);
+                const res = JSON.parse(d);
+                if (res.success) { progressPdfResult.value = res; notify('PDFを生成しました: ' + res.fileName); }
+                else { notify(res.error || 'PDF生成失敗', 'error'); }
+              } catch (e) { notify('PDF生成エラー: ' + e.message, 'error'); }
+              finally { progressSaving.value = false; }
+            };
+            const progressGetRateColor = (rate) => {
+              const r = Number(rate) || 0;
+              if (r >= 1) return 'bg-green-500';
+              if (r >= 0.7) return 'bg-blue-500';
+              if (r >= 0.3) return 'bg-yellow-500';
+              return 'bg-gray-400';
+            };
+            const progressGetRatePct = (rate) => {
+              return Math.min(100, Math.round((Number(rate) || 0) * 100));
+            };
+            const progressCalcLine = (item) => {
+              const pqty = Number(item.periodQty) || 0;
+              const price = Number(item.price) || 0;
+              const ea = Number(item.estimateAmt) || 0;
+              const prevQty = Number(item.prevCumQty) || 0;
+              item.currCumQty = prevQty + pqty;
+              item.progressAmt = Math.round(item.currCumQty * price);
+              item.progressRate = ea > 0 ? item.progressAmt / ea : 0;
+              item.periodPayment = Math.round(pqty * price);
+              item.progressAmtDisp = formatCurrency(item.progressAmt);
+              item.progressRateDisp = (item.progressRate * 100).toFixed(2) + '%';
+              item.periodPaymentDisp = formatCurrency(item.periodPayment);
+              progressDirtyRows.value = new Set([...progressDirtyRows.value, item.rowIndex]);
+            };
+            const progressBatchSave = async () => {
+              if (progressDirtyRows.value.size === 0) return;
+              progressSaving.value = true;
+              try {
+                const payload = progressItems.value
+                  .filter(i => progressDirtyRows.value.has(i.rowIndex))
+                  .map(i => ({ rowIndex: i.rowIndex, currCumQty: Number(i.currCumQty) || 0 }));
+                const d = await gas('apiProgressBatchUpdate', JSON.stringify(payload));
+                const res = JSON.parse(d);
+                if (res.success) {
+                  const oid = progressEditOrderId.value || '';
+                  const ym = progressEditYM.value;
+                  var items = oid ? res.items.filter(i => i.orderId === oid) : res.items;
+                  if (ym) items = items.filter(i => !i.reportMonth || i.reportMonth === ym);
+                  items.forEach(it => { const c = Number(it.currCumQty)||0, p = Number(it.prevCumQty)||0; it.periodQty = c - p || ''; });
+                  progressItems.value = items;
+                  progressDirtyRows.value = new Set();
+                  notify(payload.length + '件を一括保存しました');
+                } else { notify(res.error || '一括保存失敗', 'error'); }
+              } catch (e) { notify('一括保存エラー: ' + e.message, 'error'); }
+              finally { progressSaving.value = false; }
+            };
+            const progressDeleteRow = async (rowIndex, name) => {
+              if (!await confirmAction('「' + (name || '') + '」を削除しますか？\nこの操作は取り消せません。')) return;
+              progressSaving.value = true;
+              try {
+                const d = await gas('apiProgressDeleteRow', rowIndex);
+                const res = JSON.parse(d);
+                if (res.success) {
+                  const oid = progressEditOrderId.value || '';
+                  const ym = progressEditYM.value;
+                  var delItems = oid ? res.items.filter(i => i.orderId === oid) : res.items;
+                  if (ym) delItems = delItems.filter(i => !i.reportMonth || i.reportMonth === ym);
+                  progressItems.value = delItems;
+                  progressDirtyRows.value = new Set();
+                  notify('品目を削除しました');
+                } else { notify(res.error || '削除失敗', 'error'); }
+              } catch (e) { notify('削除エラー: ' + e.message, 'error'); }
+              finally { progressSaving.value = false; }
+            };
+
             return {
                 reminders, remindersLoading, reminderTriggerActive, reminderTriggerLoading, fetchReminderTriggerStatus, toggleReminderTrigger,
                 lineSettings, lineSettingsLoading, fetchLineSettings, saveLineToken, addLineUser, removeLineUser, testLineSend,
@@ -6091,14 +8072,15 @@ window.__script2Ran = true;
                 chatPosX, chatPosY, isDragging, onChatDragStart, onChatBtnClick,
                 floatingPanel, floatingPanelPosX, floatingPanelPosY, isFloatingPanelDragging, onFloatingPanelDragStart, openFloatingEstimatePanel, openFloatingPanelList, selectFloatingPanelItem, quickApplyFloatingPanelItem, floatingPanelBack, closeFloatingPanel, toggleFloatingPanelSelectAll, addFloatingPanelItems, applyFloatingPanelHeader, floatingPanelCheckedCount, floatingPanelFilteredList,
                 sidePanelMode, orderInPanel, toggleSidePanel, closeSidePanel, handleEstimateRowClick, saveOrderPanelToEstimate, currentEstimateOrders, reprintOrderPdf, openOrderForEdit,
-                batchVendorSelect, tempBatchVendor, applyBatchVendorToPanel, selectedItemsCount, toggleSelectionMode, selectAllRows, clearAllSelection, handleRowSelection, batchUpdateVendor,
+                batchVendorSelect, tempBatchVendor, applyBatchVendorToPanel, orderPanelBulkPercent, applyOrderPanelBulkPriceChange, selectedItemsCount, toggleSelectionMode, selectAllRows, clearAllSelection, handleRowSelection, batchUpdateVendor,
                 selectByVendorPrompt, selectByCategoryPrompt, selectByProductPrompt, selectUnorderedRows, selectBatchOption,
                 showBatchSelectModal, batchSelectOptions, batchSelectType,
+                showVendorChangeModal, vendorChangeTarget, applyVendorChangeFromMenu, copyEstimateToOrder, copyDedicatedEstToExe,
                 isSelectionMode, lastSelectedIndex,
                 saveConfirmState,
                 unifiedProducts, unitOptions, setMasters, searchMasterKeyword, searchSetKeyword, leftPanelMode, activeLeftPanelRow, leftPanelContext, filteredMasters, filteredSets, openLeftPanel, closeLeftPanel, applyMasterItem, applySetItem,
-                materialPrices, searchMaterialKeyword, filteredMaterialPrices, materialEditIdx, materialEditData, openMaterialAdd, openMaterialEdit, cancelMaterialEdit, saveMaterialItem, deleteMaterialItem,
-                removeItem, removeOrderItem, removeDedicatedItem, contextMenu, onRowContextMenu, insertRow, cellNav,
+                materialPrices, materialInclPrices, activeMaterialPrices, searchMaterialKeyword, filteredMaterialPrices, materialEditIdx, materialEditData, openMaterialAdd, openMaterialEdit, cancelMaterialEdit, saveMaterialItem, deleteMaterialItem, clearAllMaterialPrices,
+                removeItem, removeOrderItem, removeDedicatedItem, contextMenu, contextMenuEl, onRowContextMenu, insertRow, moveRowUp, moveRowDown, moveSelectedRowsUp, moveSelectedRowsDown, dragState, onRowDragStart, onRowDragOver, onRowDrop, onRowDragEnd, cellNav,
                 // Phase 1 Add: 粗利計算
                 calcPanelMargin,
                 // Phase 4 New Returns
@@ -6108,13 +8090,28 @@ window.__script2Ran = true;
                 loadEstimateToOrder,
                 // Methods
                 goHome, handleBack, handleNavigation, formatCurrency, fetchProjects, fetchOrders, fetchInvoices, loadInvoiceFiles, goToProjectList, goToInvoice, goToAdmin, filteredProjects, stats, years, adminProjects, adminOrders,
-                clearEstimateForm, createNewEstimate, openEstimateHistoryFromMenu, openOrderHistoryFromMenu, loadEstimate, saveEstimate, createPdf, createOrderPdf, selectVendorAndPrint,
-                addItem, calcLine, totalAmount, totalEstimatedCost, calculateMargin, predictPrice, bulkPriceTarget, bulkPricePercent, applyBulkPriceChange, getPricePct, getCostPct,
+                clearEstimateForm, createNewEstimate, loadEstimate, saveEstimate, createPdf, createOrderPdf, selectVendorAndPrint,
+                addItem, calcLine, totalAmount, totalEstimatedCost, selectedTotalAmount, selectedTotalCost, showSelectedCalc, lastSelectedIdx, calculateMargin, predictPrice, bulkPriceTarget, bulkPricePercent, applyBulkPriceChange, getPricePct, getCostPct,
                 showSuggestions, hideSuggestions, applySuggestion, onClientInput, 
                 selectInvoiceFile, resetInvoiceForm, checkOrderBalance, onProjectSelect, registerInvoice, editInvoice, updateInvoiceStatus, deleteItem, invoiceStatusFilter, filteredInvoices,
-                openLedger, createLedgerPdf, loadAnalysis, openDraftModal, selectDraft, openOcrModal, toggleFileSelection, executeOcrScan, handleOcrFileSelect, handleOcrDrop, applyOcrResults,
+                openLedger, createLedgerPdf, loadAnalysis, openDraftModal, selectDraft, openOcrModal, toggleFileSelection, executeOcrScan, handleOcrFileSelect, handleOcrDrop, applyOcrResults, ocrPricingMode,
                 showPreview, downloadJournalCsv, confirmAction, handleConfirm,
-                checkUnsavedChanges, handleSaveAndMove
+                checkUnsavedChanges, handleSaveAndMove,
+                // Mobile + Voice
+                isMobile, mobileSheetOpen, mobileHeaderOpen, expandedCardIdx, cardMenuIdx, mobileToolbarMore, toggleCardExpand, toggleCardMenu, closeCardMenu, cardAction,
+                isVoiceSupported, isListening, voiceTranscript, startVoiceInput, stopVoiceInput, closeMobileSheet, openMobileSheet,
+                // マスタデータ編集
+                masterTab, masterData, masterSearch, masterEditRow, masterEditValues, masterAddRow, masterAddValues,
+                MASTER_LABELS, loadMasterData, filteredMasterRows, startMasterEdit, cancelMasterEdit, saveMasterRow, openMasterAddRow, cancelMasterAdd, addMasterRow, deleteMasterRow,
+                // 出来高報告
+                progressReports, progressListLoading, progressListFilter, filteredProgressReports, progressListSummary, progressListVendors,
+                progressEditOrderId, progressItems, progressLoading, progressSaving, progressExpandedIdx, progressEditQty,
+                progressEditYear, progressEditMonth, progressEditYM, onProgressMonthChange,
+                progressReportForm, progressPdfResult, progressSummary, progressDirtyRows,
+                loadProgressReportList, openProgressEdit, loadProgressEditData, progressBackToList, progressSaveAll,
+                getOrderVendor, getOrderProject, toggleProgressExpand, saveProgressCumQty,
+                progressMonthlyClose, progressGeneratePdf,
+                progressGetRateColor, progressGetRatePct, progressCalcLine, progressBatchSave, progressDeleteRow
             };
           }
         });
